@@ -23,7 +23,7 @@ def solve_hub_arc_canonical(n, p, W, D):
             # Calculate all costs c_{ij,km} = W[i][j] * D[k][m] for this OD pair
             costs = []
             for (k, m) in H:
-                cost = W[i][j] * D[k][m]
+                cost = W[i][j] * (D[k][m])
                 costs.append(cost)
             
             # Sort and remove duplicates, add 0 at beginning
@@ -37,7 +37,7 @@ def solve_hub_arc_canonical(n, p, W, D):
     # Decision variables
     # z_ijk: cumulative variables
     z = model.addVars([(i, j, k) for i in N for j in N 
-                       for k in range(1, G[(i, j)] + 1)],
+                       for k in range(2, G[(i, j)] + 1)],
                       vtype=GRB.CONTINUOUS, lb=0, name="z")
     
     # y_km: hub arc open variables
@@ -62,7 +62,7 @@ def solve_hub_arc_canonical(n, p, W, D):
     # Constraint 2: z_ijk + sum of y_k'm' for arcs with cost < D_ijk >= 1
     for i in N:
         for j in N:
-            for k in range(1, G[(i, j)] + 1):
+            for k in range(2, G[(i, j)] + 1):
                 D_ijk = D_vectors[(i, j)][k-1]  # k-th element (0-indexed)
                 
                 # Find hub arcs with cost < D_ijk

@@ -7,7 +7,13 @@ def solve_p_median_CR(n, p, c):
     p: number of medians to choose
     c: cost matrix (n x n)
     """
-
+    try:
+        # Try to create a model to verify license
+        m = gp.Model("license_check")
+        print("Gurobi license is active!")
+    except gp.GurobiError as e:
+        print("Gurobi license error:", e)
+        return None
     # Step 1: Construct D_i for each i
     D = {}
     G = {}
