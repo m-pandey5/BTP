@@ -3,6 +3,9 @@ from gurobipy import GRB
 import numpy as np
 import time
 import random
+import psutil
+
+process = psutil.Process()
 
 def solve_hub_arc_classical(n, p, W, D):
     """Classical Formulation for p-Hub-Arc Problem"""
@@ -52,6 +55,7 @@ def solve_hub_arc_classical(n, p, W, D):
         return model.objVal, chosen_arcs, model.runtime
     else:
         return None, None, model.runtime
+
 
 def solve_hub_arc_canonical(n, p, W, D):
     """Canonical Representation for p-Hub-Arc Problem"""
@@ -127,17 +131,19 @@ def solve_hub_arc_canonical(n, p, W, D):
     else:
         return None, None, model.runtime
 
+
 def run_comprehensive_tests(min_n=3, max_n=30, density=0.2):
     """
     Run test cases for n in range [min_n, max_n] with different p,
     comparing Classical vs Canonical Hub-Arc formulations.
     """
     
-    print("=" * 90)
+    print("=" * 105)
     print("TESTING CLASSICAL VS CANONICAL HUB-ARC FORMULATIONS")
-    print("=" * 90)
-    print(f"{'Test':<5} {'n':<3} {'p':<3} {'Classical Obj':<15} {'Canonical Obj':<15} {'Match':<8} {'Classical Time':<15} {'Canonical Time':<15}")
-    print("-" * 90)
+    print("=" * 105)
+    print(f"{'Test':<5} {'n':<3} {'p':<3} {'Classical Obj':<15} {'Canonical Obj':<15} {'Match':<8} "
+          f"{'Classical Time':<15} {'Canonical Time':<15} {'Classical Mem(MB)':<18} {'Canonical Mem(MB)':<18}")
+    print("-" * 105)
     
     test_id = 0
     total_tests = 0
@@ -168,26 +174,33 @@ def run_comprehensive_tests(min_n=3, max_n=30, density=0.2):
                         D[j][i] = val
             
             # Solve Classical
+            # mem_before = process.memory_info().rss
             start = time.time()
             classical_obj, classical_arcs, classical_time = solve_hub_arc_classical(n, p, W, D)
             classical_time = time.time() - start
+            mem_info = process.memory_info()
+            classical_memory = mem_info.rss / (1024 * 1024)
             
             # Solve Canonical
+            # mem_before = process.memory_info().rss
             start = time.time()
             canonical_obj, canonical_arcs, canonical_time = solve_hub_arc_canonical(n, p, W, D)
             canonical_time = time.time() - start
+            mem_info = process.memory_info()
+            canonical_memory = mem_info.rss / (1024 * 1024)
             
             # Compare
             match = "✓" if classical_obj is not None and canonical_obj is not None and abs(classical_obj - canonical_obj) < 1e-6 else "✗"
             if match == "✓":
                 successful_tests += 1
             
-            print(f"{test_id:<5} {n:<3} {p:<3} {classical_obj:<15} {canonical_obj:<15} {match:<8} {classical_time:<15.4f} {canonical_time:<15.4f}")
+            print(f"{test_id:<5} {n:<3} {p:<3} {classical_obj:<15} {canonical_obj:<15} {match:<8} "
+                  f"{classical_time:<15.4f} {canonical_time:<15.4f} {classical_memory:<18.4f} {canonical_memory:<18.4f}")
     
-    print("-" * 90)
+    print("-" * 105)
     print(f"SUMMARY: {successful_tests}/{total_tests} tests matched")
     print(f"Success Rate: {100*successful_tests/total_tests:.2f}%")
-    print("=" * 90)
+    print("=" * 105)
 
 
 if __name__ == "__main__":
