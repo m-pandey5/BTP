@@ -1,244 +1,228 @@
-# ======================================================
-# Benders Decomposition for p-Median Problem (Gurobi)
-# Works in VS Code or terminal with gurobipy installed
-# ======================================================
 
-from gurobipy import Model, GRB, quicksum
-import math
-import random
+"""
+Benders Decomposition for p-Median Problem
+Based on the formulation (F3), (MP), and (SP)
+"""
+
+import gurobipy as gp
+from gurobipy import GRB
 import numpy as np
 
-# ------------------------------------------------------
-# Small utilities
-# ------------------------------------------------------
-EPS = 1e-7
-
-def argpartition_top_p(values, p):
-    """Return indices of the top-p values (largest)."""
-    if p <= 0:
-        return []
-    idx = np.argpartition(values, -p)[-p:]
-    return idx[np.argsort(values[idx])[::-1]]
-
-
-# ------------------------------------------------------
-# Demo instance (you can replace with your dataset)
-# ------------------------------------------------------
-random.seed(0)
-np.random.seed(0)
-
-N = 20     # number of clients
-M = 20     # number of candidate sites
-p = 4      # open exactly p sites
-
-clients_xy = np.random.rand(N, 2)
-sites_xy   = np.random.rand(M, 2)
-
-# Euclidean distances
-d = np.zeros((N, M))
-for i in range(N):
-    for j in range(M):
-        dx, dy = clients_xy[i,0] - sites_xy[j,0], clients_xy[i,1] - sites_xy[j,1]
-        d[i, j] = math.hypot(dx, dy)
-
-assert p <= M, "p cannot exceed M"
-
-# ------------------------------------------------------
-# Build distinct distance levels per client
-# ------------------------------------------------------
-Di = []
-level_sites = []
-base_dist = np.zeros(N)
-
-for i in range(N):
-    dist_i = d[i, :]
-    uniq, inv = np.unique(np.round(dist_i, 12), return_inverse=True)
-    uniq = uniq.tolist()
-    K_i = len(uniq)
-    buckets = [[] for _ in range(K_i)]
-    for j, k in enumerate(inv):
-        buckets[k].append(j)
-    Di.append(uniq)
-    level_sites.append(buckets)
-    base_dist[i] = uniq[0]
-
-
-# ------------------------------------------------------
-# Cut separation helpers
-# ------------------------------------------------------
-def separate_cut_for_client(i, y_vals):
-    Di_i = Di[i]
-    buckets = level_sites[i]
-    mass = 0.0
-    ktilde = -1
-
-    # Convert to plain array if y_vals is a Gurobi tupledict
-    if not isinstance(y_vals, (list, np.ndarray)):
-        try:
-            y_vals = np.array([y_vals[j] for j in range(M)], dtype=float)
-        except Exception:
-            y_vals = np.array(list(y_vals.values()), dtype=float)
-
-    for k, sites_k in enumerate(buckets):
-        mass += sum(y_vals[j] for j in sites_k)
-        if mass < 1.0 - EPS:
-            ktilde = k
-        else:
-            break
-
-    if ktilde < 0:
-        rhs_const = Di_i[0]
-        coeffs = np.zeros(M)
-        return rhs_const, coeffs, ktilde, rhs_const
-
-    D_next = Di_i[ktilde + 1] if ktilde + 1 < len(Di_i) else Di_i[-1]
-    coeffs = np.zeros(M)
-    thresh = Di_i[ktilde]
-    for j in range(M):
-        if d[i, j] <= thresh + 1e-12:
-            coeffs[j] = (D_next - d[i, j])
-
-    rhs_const = D_next
-    rhs_y = rhs_const - float(np.dot(coeffs, y_vals))
-    return rhs_const, coeffs, ktilde, rhs_y
-
-
-
-def add_cut_to_model(model, theta_vars, y_vars, i, rhs_const, coeffs):
-    """Add cut: theta_i >= rhs_const - sum_j coeffs[j]*y_j"""
-    model.addConstr(
-        theta_vars[i] >= rhs_const - quicksum(coeffs[j]*y_vars[j] for j in range(len(y_vars))),
-        name=f"BD_i_{i}_{model.getAttr('NumConstrs')}"
-    )
-
-
-# ------------------------------------------------------
-# Phase-1: LP relaxation
-# ------------------------------------------------------
-def phase1_lp_benders(N, M, p, d, Di, level_sites, time_limit_sec=60, max_iters=200):
-    model = Model("MP_phase1")
-    model.Params.OutputFlag = 1
-    if time_limit_sec is not None:
-        model.Params.TimeLimit = time_limit_sec
-
-    y = model.addVars(M, lb=0.0, ub=1.0, vtype=GRB.CONTINUOUS, name="y")
-    theta = model.addVars(N, lb=0.0, vtype=GRB.CONTINUOUS, name="theta")
-
-    model.addConstr(quicksum(y[j] for j in range(M)) == p, name="open_p")
-
-    for i in range(N):
-        model.addConstr(theta[i] >= base_dist[i], name=f"basecut_{i}")
-
-    model.setObjective(quicksum(theta[i] for i in range(N)), GRB.MINIMIZE)
-
-    UB = float("inf")
-    y_incumbent = None
-
-    for it in range(1, max_iters + 1):
+class BendersDecomposition:
+    def __init__(self, N, M, p, K, D, distance_matrix):
+        """
+        Parameters:
+        -----------
+        N : int - Number of clients
+        M : int - Number of facilities
+        p : int - Number of facilities to open
+        K : array-like - Number of levels for each client (K_i for each i)
+        D : dict - Distance thresholds D^k for each client i and level k
+        distance_matrix : 2D array - Distance from client i to facility j
+        """
+        self.N = N
+        self.M = M
+        self.p = p
+        self.K = K  # K[i] is K_i for client i
+        self.D = D  # D[i][k] is D_i^k for client i at level k
+        self.dist = distance_matrix
+        
+        # Benders cuts storage
+        self.benders_cuts = []
+        
+    def solve_master_problem(self):
+        """
+        Solve the Master Problem (MP):
+        min sum_{i=1}^N theta_i
+        s.t. sum_{j=1}^M y_j = p
+             theta_i satisfies BD_i (Benders cuts)
+             y_j ∈ {0, 1}
+        """
+        model = gp.Model("MasterProblem")
+        model.Params.OutputFlag = 0
+        
+        # Variables
+        y = model.addVars(self.M, vtype=GRB.BINARY, name="y")
+        theta = model.addVars(self.N, lb=0, vtype=GRB.CONTINUOUS, name="theta")
+        
+        # Objective: minimize sum of theta_i
+        model.setObjective(gp.quicksum(theta[i] for i in range(self.N)), GRB.MINIMIZE)
+        
+        # Constraint: sum y_j = p
+        model.addConstr(gp.quicksum(y[j] for j in range(self.M)) == self.p, "p_facilities")
+        
+        # Add Benders cuts
+        for cut in self.benders_cuts:
+            i = cut['client']
+            D1_i = cut['D1_i']
+            nu1_i = cut['nu1_i']
+            nu_k = cut['nu_k']
+            
+            # Benders cut (16):
+            # theta_i >= D_i^1 + nu_i^1(1 - sum_{j:d_ij=D_i^1} y_j) 
+            #            - sum_{k=2}^{K_i} nu_i^k sum_{j:d_ij=D_i^k} y_j
+            
+            expr = D1_i + nu1_i
+            expr -= nu1_i * gp.quicksum(y[j] for j in cut['facilities_at_D1'])
+            for k in range(2, self.K[i] + 1):
+                if k in nu_k:
+                    expr -= nu_k[k] * gp.quicksum(y[j] for j in cut[f'facilities_at_D{k}'])
+            
+            model.addConstr(theta[i] >= expr, f"benders_cut_{len(self.benders_cuts)}_{i}")
+        
         model.optimize()
-        if model.Status not in [GRB.OPTIMAL, GRB.TIME_LIMIT]:
-            break
+        
+        if model.status == GRB.OPTIMAL:
+            y_sol = [y[j].X for j in range(self.M)]
+            theta_sol = [theta[i].X for i in range(self.N)]
+            obj = model.ObjVal
+            return y_sol, theta_sol, obj
+        else:
+            return None, None, None
+    
+    def solve_dual_subproblem(self, i, y_bar):
+        """
+        Solve the Dual Subproblem (DSP_i) for client i given y_bar:
+        
+        max D_i^1 + nu_i^1(1 - sum_{j:d_ij=D_i^1} y_bar_j) 
+            - sum_{k=2}^{K_i} nu_i^k sum_{j:d_ij=D_i^k} y_bar_j
+        s.t. nu_i^k - nu_i^{k+1} <= D_i^{k+1} - D_i^k    k ∈ [K_i - 1]
+             nu_i^k >= 0                                  k ∈ [K_i]
+        """
+        model = gp.Model(f"DualSubproblem_{i}")
+        model.Params.OutputFlag = 0
+        
+        # Variables: nu_i^k for k = 1, ..., K_i
+        nu = model.addVars(range(1, self.K[i] + 1), lb=0, vtype=GRB.CONTINUOUS, name="nu")
+        
+        # Precompute facilities at each distance level
+        facilities_at_D = {}
+        for k in range(1, self.K[i] + 1):
+            D_k = self.D[i][k]
+            facilities_at_D[k] = [j for j in range(self.M) if abs(self.dist[i][j] - D_k) < 1e-6]
+        
+        # Objective
+        obj_expr = self.D[i][1]
+        obj_expr += nu[1] * (1 - sum(y_bar[j] for j in facilities_at_D[1]))
+        for k in range(2, self.K[i] + 1):
+            obj_expr -= nu[k] * sum(y_bar[j] for j in facilities_at_D[k])
+        
+        model.setObjective(obj_expr, GRB.MAXIMIZE)
+        
+        # Constraints: nu_i^k - nu_i^{k+1} <= D_i^{k+1} - D_i^k
+        for k in range(1, self.K[i]):
+            model.addConstr(nu[k] - nu[k+1] <= self.D[i][k+1] - self.D[i][k], 
+                          f"dual_constraint_{k}")
+        
+        model.optimize()
+        
+        if model.status == GRB.OPTIMAL:
+            nu_sol = {k: nu[k].X for k in range(1, self.K[i] + 1)}
+            obj = model.ObjVal
+            
+            # Prepare cut information
+            cut = {
+                'client': i,
+                'D1_i': self.D[i][1],
+                'nu1_i': nu_sol[1],
+                'nu_k': nu_sol,
+                'facilities_at_D1': facilities_at_D[1]
+            }
+            for k in range(2, self.K[i] + 1):
+                cut[f'facilities_at_D{k}'] = facilities_at_D[k]
+            
+            return obj, cut
+        else:
+            return None, None
+    
+    def solve(self, max_iterations=100, tolerance=1e-4):
+        """
+        Main Benders Decomposition algorithm
+        """
+        print("Starting Benders Decomposition...")
+        print(f"N={self.N}, M={self.M}, p={self.p}")
+        
+        iteration = 0
+        LB = -float('inf')  # Lower bound
+        UB = float('inf')   # Upper bound
+        
+        while iteration < max_iterations and (UB - LB) > tolerance:
+            iteration += 1
+            print(f"\n--- Iteration {iteration} ---")
+            
+            # Step 1: Solve Master Problem
+            y_sol, theta_sol, mp_obj = self.solve_master_problem()
+            
+            if y_sol is None:
+                print("Master problem infeasible!")
+                break
+            
+            LB = mp_obj
+            print(f"Master Problem Objective (LB): {LB:.4f}")
+            print(f"y solution: {[j for j in range(self.M) if y_sol[j] > 0.5]}")
+            
+            # Step 2: Solve Dual Subproblems for each client
+            total_sp_obj = 0
+            cuts_added = 0
+            
+            for i in range(self.N):
+                sp_obj, cut = self.solve_dual_subproblem(i, y_sol)
+                
+                if sp_obj is None:
+                    print(f"Subproblem {i} infeasible!")
+                    continue
+                
+                total_sp_obj += sp_obj
+                
+                # Check if we need to add a cut (optimality check)
+                if sp_obj > theta_sol[i] + tolerance:
+                    self.benders_cuts.append(cut)
+                    cuts_added += 1
+                    print(f"Client {i}: Adding cut (SP obj: {sp_obj:.4f}, theta: {theta_sol[i]:.4f})")
+            
+            # Update upper bound
+            UB = total_sp_obj
+            print(f"Total Subproblem Objective (UB): {UB:.4f}")
+            print(f"Gap: {UB - LB:.4f}, Cuts added: {cuts_added}")
+            
+            # Check convergence
+            if cuts_added == 0:
+                print(f"\nConverged! No cuts added.")
+                break
+        
+        print(f"\n=== Final Solution ===")
+        print(f"Optimal Value: {LB:.4f}")
+        print(f"Iterations: {iteration}")
+        print(f"Final Gap: {UB - LB:.4f}")
+        print(f"Open facilities: {[j for j in range(self.M) if y_sol[j] > 0.5]}")
+        
+        return y_sol, theta_sol, LB
 
-        y_sol = np.array([y[j].X for j in range(M)])
-        theta_sol = np.array([theta[i].X for i in range(N)])
-        cuts_added = 0
 
-        for i in range(N):
-            rhs_const, coeffs, ktilde, rhs_y = separate_cut_for_client(i, y_sol)
-            if theta_sol[i] + 1e-9 < rhs_y:
-                add_cut_to_model(model, theta, y, i, rhs_const, coeffs)
-                cuts_added += 1
-
-        idx = argpartition_top_p(y_sol, p)
-        y_round = np.zeros(M)
-        y_round[idx] = 1.0
-
-        assign_cost = 0.0
-        open_idx = np.where(y_round > 0.5)[0]
-        for i in range(N):
-            assign_cost += np.min(d[i, open_idx])
-        if assign_cost < UB - 1e-9:
-            UB = assign_cost
-            y_incumbent = y_round.copy()
-
-        if cuts_added == 0:
-            break
-
-    LB = model.ObjVal if model.SolCount > 0 else float("inf")
-    return LB, UB, y_incumbent, model
-
-
-# ------------------------------------------------------
-# Phase-2: Integer master + lazy cuts
-# ------------------------------------------------------
-def build_mp_integer(N, M, p):
-    mdl = Model("MP_phase2")
-    mdl.Params.OutputFlag = 1
-    mdl.Params.LazyConstraints = 1
-    y = mdl.addVars(M, vtype=GRB.BINARY, name="y")
-    theta = mdl.addVars(N, lb=0.0, vtype=GRB.CONTINUOUS, name="theta")
-    mdl.addConstr(quicksum(y[j] for j in range(M)) == p, name="open_p")
-    for i in range(N):
-        mdl.addConstr(theta[i] >= base_dist[i], name=f"basecut_{i}")
-    mdl.setObjective(quicksum(theta[i] for i in range(N)), GRB.MINIMIZE)
-    return mdl, y, theta
-
-
-def benders_callback(model, where):
-    if where == GRB.Callback.MIPSOL:
-        y_vals = model.cbGetSolution(model._y)
-        theta_vals = model.cbGetSolution(model._theta)
-        for i in range(model._N):
-            rhs_const, coeffs, ktilde, rhs_y = separate_cut_for_client(i, y_vals)
-            if theta_vals[i] + 1e-9 < rhs_y:
-                expr = model._theta[i]
-                for j in range(model._M):
-                    if abs(coeffs[j]) > 0:
-                        expr -= coeffs[j] * model._y[j]
-                model.cbLazy(expr >= rhs_const)
-
-
-def solve_phase2(N, M, p, d, Di, level_sites, UB_hint=None, y_hint=None, time_limit_sec=300):
-    mdl, y, theta = build_mp_integer(N, M, p)
-    if time_limit_sec is not None:
-        mdl.Params.TimeLimit = time_limit_sec
-
-    if UB_hint is not None and y_hint is not None:
-        open_idx = np.where(y_hint > 0.5)[0]
-        theta_hint = np.array([np.min(d[i, open_idx]) for i in range(N)])
-        for j in range(M):
-            y[j].Start = float(y_hint[j])
-        for i in range(N):
-            theta[i].Start = float(theta_hint[i])
-        mdl.update()
-
-    mdl._N = N
-    mdl._M = M
-    mdl._y = y
-    mdl._theta = theta
-
-    mdl.optimize(benders_callback)
-    return mdl, y, theta
-
-
-# ------------------------------------------------------
-# Run the two-phase algorithm
-# ------------------------------------------------------
+# Example usage
 if __name__ == "__main__":
-    LB1, UB1, y1, mp_lp_model = phase1_lp_benders(N, M, p, d, Di, level_sites, time_limit_sec=60, max_iters=200)
-    print(f"[Phase-1] LB1 (LP): {LB1:.6f}, UB1 (rounded): {UB1:.6f}")
+    # Small test instance
+    N = 5  # clients
+    M = 7  # facilities
+    p = 2  # facilities to open
+    
+    # Random distance matrix
+    np.random.seed(42)
+    distance_matrix = np.random.rand(N, M) * 100
+    
+    # Define K_i (number of distance levels for each client)
+    K = [3, 3, 3, 3, 3]  # Each client has 3 levels
+    
+    # Define D_i^k (distance thresholds)
+    D = {}
+    for i in range(N):
+        # Sort distances for client i to get levels
+        sorted_dists = sorted(set(distance_matrix[i, :]))
+        D[i] = {k: sorted_dists[min(k-1, len(sorted_dists)-1)] 
+                for k in range(1, K[i] + 1)}
+    
+    # Create and solve
+    benders = BendersDecomposition(N, M, p, K, D, distance_matrix)
+    y_sol, theta_sol, optimal_value = benders.solve(max_iterations=50)
 
-    mdl2, y_vars, theta_vars = solve_phase2(N, M, p, d, Di, level_sites, UB_hint=UB1, y_hint=y1, time_limit_sec=300)
-    if mdl2.SolCount > 0:
-        print(f"[Phase-2] Obj: {mdl2.ObjVal:.6f}, Gap: {mdl2.MIPGap:.6%}")
 
-        y_opt = np.array([y_vars[j].X for j in range(M)])
-        open_idx = np.where(y_opt > 0.5)[0]
-        print("Open sites:", open_idx.tolist())
-
-        assign_cost = 0.0
-        for i in range(N):
-            assign_cost += np.min(d[i, open_idx])
-        print(f"Recomputed objective: {assign_cost:.6f}")
-    else:
-        print(f"[Phase-2] No solution (status {mdl2.Status})")
