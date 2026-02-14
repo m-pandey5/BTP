@@ -242,7 +242,7 @@ def _build_cut_from_k_i(i, k_i, D, K, dist, S):
         Dk = D[i][k]
         facilities_at_D[k] = [
             j for j in S[i]
-            if abs(dist[i][j] - Dk) < 1e-9
+            if abs(dist[i][j] - Dk) < 1e-8
         ]
 
     # Dual solution from eq (19)

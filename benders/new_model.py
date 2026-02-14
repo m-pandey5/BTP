@@ -45,7 +45,7 @@ def preprocess(N, M, dist):
         for k in range(1, K[i] + 1):
             Dk = D[i][k]
             facilities_at_distance[i][k] = [
-                j for j in range(M) if abs(dist[i][j] - Dk) < 1e-9
+                j for j in range(M) if abs(dist[i][j] - Dk) < 1e-8
             ]
 
     return S, D, K, facilities_at_distance
@@ -105,7 +105,7 @@ class BendersCutCallback:
 # Full Benders Decomposition (Phase 1 + Phase 2)
 # ============================================================
 
-def solve_benders_pmedian(N, M, p, dist, time_limit=None, verbose=False, use_phase1=True):
+def solve_benders_pmedian(N, M, p, dist, K=None, D=None, time_limit=None, verbose=False, use_phase1=True):
     """
     Solve p-median using Benders decomposition with polynomial separation.
 
@@ -129,7 +129,18 @@ def solve_benders_pmedian(N, M, p, dist, time_limit=None, verbose=False, use_pha
     dist = np.asarray(dist)
     start_time = time.time()
 
-    S, D, K, facilities_at_distance = preprocess(N, M, dist)
+    if K is None or D is None:
+        S, D, K, facilities_at_distance = preprocess(N, M, dist)
+    else:
+        S = {i: sorted(range(M), key=lambda j: dist[i][j]) for i in range(N)}
+        facilities_at_distance = {}
+        for i in range(N):
+            facilities_at_distance[i] = {}
+            for k in range(1, K[i] + 1):
+                Dk = D[i][k]
+                facilities_at_distance[i][k] = [
+                    j for j in range(M) if abs(dist[i][j] - Dk) < 1e-8
+                ]
 
     y1 = None
     if use_phase1:

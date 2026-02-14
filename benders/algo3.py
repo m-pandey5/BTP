@@ -131,7 +131,7 @@ def phase1_solve_mp(N, M, p, S, D, K, dist, facilities_at_distance=None,
                 for k in range(1, K[i] + 1):
                     Dk = D[i][k]
                     facilities_at_distance[i][k] = [
-                        j for j in range(M) if abs(dist[i][j] - Dk) < 1e-9
+                        j for j in range(M) if abs(dist[i][j] - Dk) < 1e-8
                     ]
         cuts, UB = separation_algorithm_dual(
             y_bar, theta_bar, facilities_at_distance, D, K, N, M

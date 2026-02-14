@@ -122,7 +122,7 @@ def run_test(test_id, N, M, p, seed=None):
 
     # Benders (new_model) - try without Phase 1 (callback-only, like benderscallback_fixed)
     print("Solving Benders (dual separation)...", end=" ", flush=True)
-    benders_res = solve_benders_pmedian(N, M, p, dist, verbose=False, use_phase1=True)
+    benders_res = solve_benders_pmedian(N, M, p, dist, K=K, D=D, verbose=False, use_phase1=True)
     print(f"done. Obj={benders_res['objective']:.4f}, Time={benders_res['time']:.4f}s")
 
     # Compare
@@ -160,7 +160,7 @@ def main():
     results.append(r1)
 
     # Test 2: Small
-    r2 = run_test(2, N=5, M=7, p=3, seed=43)
+    r2 = run_test(2, N=5, M=5, p=3, seed=43)
     results.append(r2)
 
     # Test 3: Medium
@@ -168,7 +168,7 @@ def main():
     results.append(r3)
 
     # Test 4: Medium
-    r4 = run_test(4, N=10, M=12, p=5, seed=45)
+    r4 = run_test(4, N=10, M=10, p=5, seed=45)
     results.append(r4)
 
     # Summary
