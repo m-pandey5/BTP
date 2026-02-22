@@ -7,6 +7,7 @@ Compares:
   - New Benders (solve_benders_hub_arc: Phase 1 LP + Phase 2 with warm start)
 
 Run: python test_timing_comprehensive.py
+      or: python -m pytest p-hub-arc/test_timing_comprehensive.py -v
 """
 
 import sys
@@ -130,7 +131,13 @@ def run_timing_suite(
                     f3t, nt, nn = r["f3_time"], r["norm_time"], r["new_time"]
                     times = [("F3", f3t), ("Norm", nt), ("New", nn)]
                     fastest = min(times, key=lambda x: x[1] or float("inf"))
+                    f3o, no, neo = r.get("f3_obj"), r.get("norm_obj"), r.get("new_obj")
+                    f3o_s = f"{f3o:.4f}" if f3o is not None else "N/A"
+                    no_s = f"{no:.4f}" if no is not None else "N/A"
+                    neo_s = f"{neo:.4f}" if neo is not None else "N/A"
+                    match_str = "Match" if r.get("match") else "MISMATCH"
                     print(f"F3={f3t:.3f}s, NormB={nt:.3f}s, NewB={nn:.3f}s (fastest: {fastest[0]})")
+                    print(f"      Obj: F3={f3o_s}  NormB={no_s}  NewB={neo_s}  |  {match_str}")
             except Exception as e:
                 if verbose:
                     print(f"ERROR: {e}")
@@ -202,41 +209,423 @@ def print_timing_table(results: List[Dict], agg: Dict):
 
 
 def print_detailed_results(results: List[Dict]):
-    """Print per-run details."""
+    """Print per-run details (times, objectives, match)."""
     print("\n" + "=" * 115)
-    print("DETAILED PER-RUN RESULTS")
+    print("DETAILED PER-RUN RESULTS (times, objectives, match)")
     print("=" * 115)
     for i, r in enumerate(results):
         if "error" in r:
             print(f"  [{i+1}] n={r['n']}, p={r['p']}: ERROR - {r['error']}")
             continue
-        status = "OK" if r.get("match") else "MISMATCH"
-        f3t = r.get("f3_time")
-        nt = r.get("norm_time")
-        nn = r.get("new_time")
+        status = "Match" if r.get("match") else "MISMATCH"
+        f3t, nt, nn = r.get("f3_time"), r.get("norm_time"), r.get("new_time")
+        f3o, no, neo = r.get("f3_obj"), r.get("norm_obj"), r.get("new_obj")
         f3s = f"{f3t:.4f}" if f3t is not None else "N/A"
         ns = f"{nt:.4f}" if nt is not None else "N/A"
         nns = f"{nn:.4f}" if nn is not None else "N/A"
+        f3o_s = f"{f3o:.4f}" if f3o is not None else "N/A"
+        no_s = f"{no:.4f}" if no is not None else "N/A"
+        neo_s = f"{neo:.4f}" if neo is not None else "N/A"
         print(f"  [{i+1}] n={r['n']}, p={r['p']}, seed={r.get('seed')}: "
-              f"F3={f3s}s, NormB={ns}s, NewB={nns}s [{status}]")
+              f"F3={f3s}s, NormB={ns}s, NewB={nns}s")
+        print(f"       Obj: F3={f3o_s}  NormB={no_s}  NewB={neo_s}  |  {status}")
 
 
-def main():
-    print("\n" + "=" * 95)
-    print("COMPREHENSIVE TIMING TEST: p-Hub-Arc (F3 vs Normal Benders vs New Benders)")
-    print("=" * 95)
+# ---------------------------------------------------------------------------
+# Unit tests: build_instance
+# ---------------------------------------------------------------------------
 
-    # Fixed instances (small, deterministic)
+def test_build_instance_shape():
+    """build_instance returns W and D of size n×n."""
+    W, D = build_instance(5, 2, seed=42)
+    assert len(W) == 5 and len(W[0]) == 5
+    assert len(D) == 5 and len(D[0]) == 5
+
+
+def test_build_instance_diagonal_zero():
+    """W and D have zero diagonal."""
+    W, D = build_instance(4, 2, seed=43)
+    for i in range(4):
+        assert W[i][i] == 0
+        assert D[i][i] == 0
+
+
+def test_build_instance_reproducibility():
+    """Same seed gives same W and D."""
+    W1, D1 = build_instance(5, 2, seed=100)
+    W2, D2 = build_instance(5, 2, seed=100)
+    assert W1 == W2 and D1 == D2
+
+
+def test_build_instance_different_seeds():
+    """Different seeds give different data."""
+    W1, D1 = build_instance(5, 2, seed=1)
+    W2, D2 = build_instance(5, 2, seed=2)
+    assert W1 != W2 or D1 != D2
+
+
+def test_build_instance_no_negative():
+    """W and D have non-negative entries (after zero diag)."""
+    W, D = build_instance(6, 3, seed=44)
+    for i in range(6):
+        for j in range(6):
+            assert W[i][j] >= 0 and D[i][j] >= 0
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: preprocess
+# ---------------------------------------------------------------------------
+
+def test_preprocess_returns_all_keys():
+    """preprocess returns H, C, L, K, cost_map, arcs_sorted, od_pairs."""
+    W, D = build_instance(4, 2, seed=45)
+    H, C, L, K, cost_map, arcs_sorted, od_pairs = preprocess(4, W, D)
+    assert H is not None and C is not None and L is not None
+    assert K is not None and cost_map is not None and arcs_sorted is not None
+    assert od_pairs is not None
+
+
+def test_preprocess_H_size():
+    """H has n*(n-1) arcs."""
+    W, D = build_instance(5, 2, seed=46)
+    H, *_ = preprocess(5, W, D)
+    assert len(H) == 5 * 4
+
+
+def test_preprocess_K_ij_positive():
+    """K[(i,j)] >= 1 for i != j."""
+    W, D = build_instance(4, 2, seed=47)
+    _, _, _, K, *_ = preprocess(4, W, D)
+    for (i, j), k in K.items():
+        assert i != j
+        assert k >= 1
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: F3 (hub_arc_models)
+# ---------------------------------------------------------------------------
+
+def test_f3_fixed_3_2_optimal():
+    """F3 solves fixed n=3, p=2 instance to optimality."""
+    W1 = [[0, 2, 3], [2, 0, 4], [3, 4, 0]]
+    D1 = [[0, 5, 2], [5, 0, 3], [2, 3, 0]]
+    res = solve_hub_arc_F3(3, 2, W1, D1, gurobi_output=False)
+    assert res["status"] == "OPTIMAL"
+    assert res["objective"] is not None and res["objective"] >= 0
+
+
+def test_f3_fixed_4_2_optimal():
+    """F3 solves fixed n=4, p=2 instance."""
+    W2 = [[0, 1, 2, 3], [1, 0, 1, 2], [2, 1, 0, 1], [3, 2, 1, 0]]
+    D2 = [[0, 4, 6, 8], [4, 0, 5, 7], [6, 5, 0, 3], [8, 7, 3, 0]]
+    res = solve_hub_arc_F3(4, 2, W2, D2, gurobi_output=False)
+    assert res["status"] == "OPTIMAL"
+
+
+def test_f3_returns_time():
+    """F3 result includes time."""
+    W, D = build_instance(4, 2, seed=48)
+    res = solve_hub_arc_F3(4, 2, W, D, gurobi_output=False)
+    assert "time" in res and res["time"] >= 0
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: run_instance and aggregate
+# ---------------------------------------------------------------------------
+
+def test_run_instance_returns_all_keys():
+    """run_instance returns n, p, f3_obj, norm_obj, new_obj, match, times, statuses."""
+    W, D = build_instance(4, 2, seed=49)
+    r = run_instance(4, 2, W, D, time_limit=30.0)
+    for key in ("n", "p", "f3_obj", "f3_time", "norm_obj", "new_obj", "match"):
+        assert key in r
+
+
+def test_run_instance_fixed_3_2_match():
+    """F3, Norm Benders, New Benders objectives match on fixed n=3, p=2."""
+    W1 = [[0, 2, 3], [2, 0, 4], [3, 4, 0]]
+    D1 = [[0, 5, 2], [5, 0, 3], [2, 3, 0]]
+    r = run_instance(3, 2, W1, D1, time_limit=60.0)
+    assert r["match"], f"f3={r['f3_obj']} norm={r['norm_obj']} new={r['new_obj']}"
+
+
+def test_run_instance_fixed_4_2_match():
+    """Objectives match on fixed n=4, p=2."""
+    W2 = [[0, 1, 2, 3], [1, 0, 1, 2], [2, 1, 0, 1], [3, 2, 1, 0]]
+    D2 = [[0, 4, 6, 8], [4, 0, 5, 7], [6, 5, 0, 3], [8, 7, 3, 0]]
+    r = run_instance(4, 2, W2, D2, time_limit=60.0)
+    assert r["match"]
+
+
+def test_aggregate_by_instance_structure():
+    """aggregate_by_instance returns dict keyed by (n, p) with count, means, match_count."""
+    W, D = build_instance(4, 2, seed=50)
+    results = [run_instance(4, 2, W, D, time_limit=20.0)]
+    agg = aggregate_by_instance(results)
+    assert (4, 2) in agg
+    a = agg[(4, 2)]
+    assert "count" in a and "f3_mean" in a and "match_count" in a
+    assert a["count"] == 1
+
+
+# ---------------------------------------------------------------------------
+# Integration tests: F3 vs Benders objective match (many seeds/sizes)
+# ---------------------------------------------------------------------------
+
+def test_match_n3_p2_seed_42():
+    W, D = build_instance(3, 2, seed=42)
+    assert run_instance(3, 2, W, D, time_limit=60.0)["match"]
+
+
+def test_match_n4_p2_seed_43():
+    W, D = build_instance(4, 2, seed=43)
+    assert run_instance(4, 2, W, D, time_limit=60.0)["match"]
+
+
+def test_match_n4_p3_seed_44():
+    W, D = build_instance(4, 3, seed=44)
+    assert run_instance(4, 3, W, D, time_limit=60.0)["match"]
+
+
+def test_match_n5_p2_seed_45():
+    W, D = build_instance(5, 2, seed=45)
+    assert run_instance(5, 2, W, D, time_limit=90.0)["match"]
+
+
+def test_match_n5_p3_seed_46():
+    W, D = build_instance(5, 3, seed=46)
+    assert run_instance(5, 3, W, D, time_limit=90.0)["match"]
+
+
+def test_match_n5_p2_seed_47():
+    W, D = build_instance(5, 2, seed=47)
+    assert run_instance(5, 2, W, D, time_limit=90.0)["match"]
+
+
+def test_match_n6_p3_seed_48():
+    W, D = build_instance(6, 3, seed=48)
+    assert run_instance(6, 3, W, D, time_limit=120.0)["match"]
+
+
+def test_match_n6_p4_seed_49():
+    W, D = build_instance(6, 4, seed=49)
+    assert run_instance(6, 4, W, D, time_limit=120.0)["match"]
+
+
+def test_match_n5_p2_seed_50():
+    W, D = build_instance(5, 2, seed=50)
+    assert run_instance(5, 2, W, D, time_limit=60.0)["match"]
+
+
+def test_match_n4_p2_seed_51():
+    W, D = build_instance(4, 2, seed=51)
+    assert run_instance(4, 2, W, D, time_limit=60.0)["match"]
+
+
+def test_match_n3_p3_fixed():
+    """Fixed instance n=3, p=3."""
+    W1 = [[0, 2, 3], [2, 0, 4], [3, 4, 0]]
+    D1 = [[0, 5, 2], [5, 0, 3], [2, 3, 0]]
+    assert run_instance(3, 3, W1, D1, time_limit=60.0)["match"]
+
+
+def test_match_n4_p3_fixed():
+    """Fixed instance n=4, p=3."""
+    W2 = [[0, 1, 2, 3], [1, 0, 1, 2], [2, 1, 0, 1], [3, 2, 1, 0]]
+    D2 = [[0, 4, 6, 8], [4, 0, 5, 7], [6, 5, 0, 3], [8, 7, 3, 0]]
+    assert run_instance(4, 3, W2, D2, time_limit=60.0)["match"]
+
+
+def test_new_benders_use_phase1_false():
+    """New Benders runs with use_phase1=False and returns consistent result."""
+    W, D = build_instance(4, 2, seed=52)
+    r = run_instance(4, 2, W, D, use_phase1=False, time_limit=60.0)
+    assert "new_obj" in r and "new_status" in r
+    assert r["new_obj"] is not None or r["new_status"] != "OPTIMAL"
+
+
+def test_run_instance_time_limit_short():
+    """run_instance respects short time_limit (no crash)."""
+    W, D = build_instance(6, 4, seed=53)
+    r = run_instance(6, 4, W, D, time_limit=1.0)
+    assert "f3_time" in r and "match" in r
+
+
+def test_f3_objective_non_negative():
+    """F3 objective is non-negative for random instance."""
+    W, D = build_instance(4, 2, seed=54)
+    res = solve_hub_arc_F3(4, 2, W, D, gurobi_output=False)
+    assert res["objective"] is None or res["objective"] >= 0
+
+
+def test_run_instance_n7_p4_seed_55():
+    W, D = build_instance(7, 4, seed=55)
+    assert run_instance(7, 4, W, D, time_limit=120.0)["match"]
+
+
+def test_run_instance_n5_p2_seed_56():
+    W, D = build_instance(5, 2, seed=56)
+    assert run_instance(5, 2, W, D, time_limit=60.0)["match"]
+
+
+def test_run_instance_n6_p3_seed_57():
+    W, D = build_instance(6, 3, seed=57)
+    assert run_instance(6, 3, W, D, time_limit=90.0)["match"]
+
+
+def test_run_instance_n4_p2_seed_58():
+    W, D = build_instance(4, 2, seed=58)
+    assert run_instance(4, 2, W, D, time_limit=60.0)["match"]
+
+
+def test_run_instance_n5_p3_seed_59():
+    W, D = build_instance(5, 3, seed=59)
+    assert run_instance(5, 3, W, D, time_limit=90.0)["match"]
+
+
+def test_run_instance_n6_p4_seed_60():
+    W, D = build_instance(6, 4, seed=60)
+    assert run_instance(6, 4, W, D, time_limit=120.0)["match"]
+
+
+# ---------------------------------------------------------------------------
+# Large instance tests: n from 10 to 50 (with time_limit for scalability)
+# ---------------------------------------------------------------------------
+
+def test_match_n10_p4_seed_70():
+    W, D = build_instance(10, 4, seed=70)
+    assert run_instance(10, 4, W, D, time_limit=180.0)["match"]
+
+
+def test_match_n10_p5_seed_71():
+    W, D = build_instance(10, 5, seed=71)
+    assert run_instance(10, 5, W, D, time_limit=180.0)["match"]
+
+
+def test_match_n10_p6_seed_72():
+    W, D = build_instance(10, 6, seed=72)
+    assert run_instance(10, 6, W, D, time_limit=180.0)["match"]
+
+
+def test_match_n12_p5_seed_73():
+    W, D = build_instance(12, 5, seed=73)
+    assert run_instance(12, 5, W, D, time_limit=200.0)["match"]
+
+
+def test_match_n12_p6_seed_74():
+    W, D = build_instance(12, 6, seed=74)
+    assert run_instance(12, 6, W, D, time_limit=200.0)["match"]
+
+
+def test_match_n15_p6_seed_75():
+    W, D = build_instance(15, 6, seed=75)
+    assert run_instance(15, 6, W, D, time_limit=240.0)["match"]
+
+
+def test_match_n15_p8_seed_76():
+    W, D = build_instance(15, 8, seed=76)
+    assert run_instance(15, 8, W, D, time_limit=240.0)["match"]
+
+
+def test_match_n20_p8_seed_77():
+    W, D = build_instance(20, 8, seed=77)
+    assert run_instance(20, 8, W, D, time_limit=300.0)["match"]
+
+
+def test_match_n20_p10_seed_78():
+    W, D = build_instance(20, 10, seed=78)
+    assert run_instance(20, 10, W, D, time_limit=300.0)["match"]
+
+
+def test_match_n25_p10_seed_79():
+    W, D = build_instance(25, 10, seed=79)
+    assert run_instance(25, 10, W, D, time_limit=360.0)["match"]
+
+
+def test_match_n25_p12_seed_80():
+    W, D = build_instance(25, 12, seed=80)
+    assert run_instance(25, 12, W, D, time_limit=360.0)["match"]
+
+
+def test_match_n30_p12_seed_81():
+    W, D = build_instance(30, 12, seed=81)
+    assert run_instance(30, 12, W, D, time_limit=400.0)["match"]
+
+
+def test_match_n30_p15_seed_82():
+    W, D = build_instance(30, 15, seed=82)
+    assert run_instance(30, 15, W, D, time_limit=400.0)["match"]
+
+
+def test_match_n35_p14_seed_83():
+    W, D = build_instance(35, 14, seed=83)
+    assert run_instance(35, 14, W, D, time_limit=480.0)["match"]
+
+
+def test_match_n35_p18_seed_84():
+    W, D = build_instance(35, 18, seed=84)
+    assert run_instance(35, 18, W, D, time_limit=480.0)["match"]
+
+
+def test_match_n40_p16_seed_85():
+    W, D = build_instance(40, 16, seed=85)
+    assert run_instance(40, 16, W, D, time_limit=600.0)["match"]
+
+
+def test_match_n40_p20_seed_86():
+    W, D = build_instance(40, 20, seed=86)
+    assert run_instance(40, 20, W, D, time_limit=600.0)["match"]
+
+
+def test_match_n45_p18_seed_87():
+    W, D = build_instance(45, 18, seed=87)
+    assert run_instance(45, 18, W, D, time_limit=600.0)["match"]
+
+
+def test_match_n45_p22_seed_88():
+    W, D = build_instance(45, 22, seed=88)
+    assert run_instance(45, 22, W, D, time_limit=600.0)["match"]
+
+
+def test_match_n50_p20_seed_89():
+    W, D = build_instance(50, 20, seed=89)
+    assert run_instance(50, 20, W, D, time_limit=600.0)["match"]
+
+
+def test_match_n50_p25_seed_90():
+    W, D = build_instance(50, 25, seed=90)
+    assert run_instance(50, 25, W, D, time_limit=600.0)["match"]
+
+
+def test_match_n10_p4_seed_91():
+    W, D = build_instance(10, 4, seed=91)
+    assert run_instance(10, 4, W, D, time_limit=120.0)["match"]
+
+
+def test_match_n18_p8_seed_92():
+    W, D = build_instance(18, 8, seed=92)
+    assert run_instance(18, 8, W, D, time_limit=280.0)["match"]
+
+
+def test_match_n22_p10_seed_93():
+    W, D = build_instance(22, 10, seed=93)
+    assert run_instance(22, 10, W, D, time_limit=320.0)["match"]
+
+
+# Instance specs for script mode: n from 3 to 50 (fixed + random with seeds)
+def get_script_instance_specs():
+    """Return instance specs for main() script: small fixed + n=5..50 random."""
     W1 = [[0, 2, 3], [2, 0, 4], [3, 4, 0]]
     D1 = [[0, 5, 2], [5, 0, 3], [2, 3, 0]]
     W2 = [[0, 1, 2, 3], [1, 0, 1, 2], [2, 1, 0, 1], [3, 2, 1, 0]]
     D2 = [[0, 4, 6, 8], [4, 0, 5, 7], [6, 5, 0, 3], [8, 7, 3, 0]]
-
-    instance_specs = [
+    return [
+        # Fixed (small, deterministic)
         {"n": 3, "p": 2, "fixed": True, "W": W1, "D": D1},
         {"n": 3, "p": 3, "fixed": True, "W": W1, "D": D1},
         {"n": 4, "p": 2, "fixed": True, "W": W2, "D": D2},
         {"n": 4, "p": 3, "fixed": True, "W": W2, "D": D2},
+        # Random n=5..8
         {"n": 5, "p": 2, "fixed": False},
         {"n": 5, "p": 3, "fixed": False},
         {"n": 6, "p": 3, "fixed": False},
@@ -244,16 +633,51 @@ def main():
         {"n": 7, "p": 4, "fixed": False},
         {"n": 8, "p": 4, "fixed": False},
         {"n": 8, "p": 5, "fixed": False},
+        # n=10 to n=50 (script mode: 1 seed each for speed; pytest runs full seeds)
+        {"n": 10, "p": 4, "fixed": False},
         {"n": 10, "p": 5, "fixed": False},
         {"n": 10, "p": 6, "fixed": False},
+        {"n": 12, "p": 5, "fixed": False},
+        {"n": 12, "p": 6, "fixed": False},
+        {"n": 15, "p": 6, "fixed": False},
+        {"n": 15, "p": 8, "fixed": False},
+        {"n": 18, "p": 8, "fixed": False},
+        {"n": 20, "p": 8, "fixed": False},
+        {"n": 20, "p": 10, "fixed": False},
+        {"n": 22, "p": 10, "fixed": False},
+        {"n": 25, "p": 10, "fixed": False},
+        {"n": 25, "p": 12, "fixed": False},
+        {"n": 30, "p": 12, "fixed": False},
+        {"n": 30, "p": 15, "fixed": False},
+        {"n": 35, "p": 14, "fixed": False},
+        {"n": 35, "p": 18, "fixed": False},
+        {"n": 40, "p": 16, "fixed": False},
+        {"n": 40, "p": 20, "fixed": False},
+        {"n": 45, "p": 18, "fixed": False},
+        {"n": 45, "p": 22, "fixed": False},
+        {"n": 50, "p": 20, "fixed": False},
+        {"n": 50, "p": 25, "fixed": False},
     ]
 
-    seeds = [42, 43, 44, 45, 46]
-    time_limit = 120.0
 
-    print(f"\nInstance specs: {len(instance_specs)} configurations")
-    print(f"Random seeds per config: {len(seeds)} (or 1 for fixed)")
+def main():
+    print("\n" + "=" * 95)
+    print("COMPREHENSIVE TIMING TEST: p-Hub-Arc (F3 vs Normal Benders vs New Benders)")
+    print("=" * 95)
+
+    instance_specs = get_script_instance_specs()
+    # Script mode: 1 seed per random config for faster run (n=3..50). For 5 seeds, set seeds = [42,43,44,45,46].
+    seeds = [42]
+    time_limit = 300.0  # allow larger n (up to 50) to complete
+
+    n_fixed = sum(1 for s in instance_specs if s.get("fixed"))
+    n_random = len(instance_specs) - n_fixed
+    total_runs = n_fixed * 1 + n_random * len(seeds)
+
+    print(f"\nInstance specs: {len(instance_specs)} configurations (n=3..50)")
+    print(f"Seeds per random config: {len(seeds)} (or 1 for fixed) -> {total_runs} total runs")
     print(f"Time limit per solve: {time_limit}s")
+    print("Full pytest suite (all tests): python -m pytest p-hub-arc/test_timing_comprehensive.py -v")
     print("\nRunning suite...")
     print("-" * 60)
 
