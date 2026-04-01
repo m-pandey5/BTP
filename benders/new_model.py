@@ -58,10 +58,12 @@ def preprocess(N, M, dist):
 class BendersCutCallback:
     """
     Lazy constraint callback for Phase 2.
-    Uses dual-based separation for correct Benders cuts.
+    Adds Benders cuts at integer solutions (MIPSOL) and at the root node (MIPNODE)
+    so the LP relaxation is tighter and the solver is less likely to converge to a
+    suboptimal incumbent.
     """
 
-    def __init__(self, N, M, p, facilities_at_distance, D, K, y_vars, theta_vars):
+    def __init__(self, N, M, p, facilities_at_distance, D, K, y_vars, theta_vars, add_at_root=True):
         self.N = N
         self.M = M
         self.p = p
@@ -70,20 +72,16 @@ class BendersCutCallback:
         self.K = K
         self.y_vars = y_vars
         self.theta_vars = theta_vars
+        self.add_at_root = add_at_root
+        self._root_done = False
 
-    def __call__(self, model, where):
-        if where != GRB.Callback.MIPSOL:
-            return
-
-        y_bar = [model.cbGetSolution(self.y_vars[j]) for j in range(self.M)]
-        theta_bar = [model.cbGetSolution(self.theta_vars[i]) for i in range(self.N)]
-
+    def _add_cuts(self, model, y_bar, theta_bar):
+        """Generate and add violated Benders cuts for (y_bar, theta_bar)."""
         cuts, _ = separation_algorithm_dual(
             y_bar, theta_bar,
             self.facilities_at_distance, self.D, self.K,
             self.N, self.M
         )
-
         for (i, cut_data) in cuts:
             D1 = cut_data["D1_i"]
             nu = cut_data["nu"]
@@ -99,6 +97,25 @@ class BendersCutCallback:
                         self.y_vars[j] for j in fac_D[k]
                     )
             model.cbLazy(self.theta_vars[i] >= expr)
+
+    def __call__(self, model, where):
+        # Add cuts at first MIPNODE (root LP) to tighten the relaxation (no MIPNODE_DEPTH in gurobipy)
+        if where == GRB.Callback.MIPNODE and self.add_at_root and not self._root_done:
+            try:
+                self._root_done = True
+                y_bar = [model.cbGetNodeRel(self.y_vars[j]) for j in range(self.M)]
+                theta_bar = [model.cbGetNodeRel(self.theta_vars[i]) for i in range(self.N)]
+                self._add_cuts(model, y_bar, theta_bar)
+            except gp.GurobiError:
+                self._root_done = False  # retry next MIPNODE if this one failed
+            return
+
+        if where != GRB.Callback.MIPSOL:
+            return
+
+        y_bar = [model.cbGetSolution(self.y_vars[j]) for j in range(self.M)]
+        theta_bar = [model.cbGetSolution(self.theta_vars[i]) for i in range(self.N)]
+        self._add_cuts(model, y_bar, theta_bar)
 
 
 # ============================================================
@@ -179,7 +196,7 @@ def solve_benders_pmedian(N, M, p, dist, K=None, D=None, time_limit=None, verbos
     model.setObjective(gp.quicksum(theta_vars[i] for i in range(N)), GRB.MINIMIZE)
     model.addConstr(gp.quicksum(y_vars[j] for j in range(M)) == p, name="p_facilities")
 
-    # Warm start from Phase 1 best integer solution
+    # Warm start from Phase 1 best integer solution (optional; try --no-phase1 if many Match: NO)
     if y1 is not None:
         for j in range(M):
             y_vars[j].Start = 1.0 if y1[j] > 0.5 else 0.0

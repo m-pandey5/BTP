@@ -6,6 +6,29 @@ with the direct F3 formulation for the p-median problem.
 
 Run: python test_benders_f3.py
       or: python -m pytest benders/test_benders_f3.py -v
+
+Why do some tests show Match: NO (Benders objective higher than F3)?
+----------------------------------------------------------------------
+Both formulations are correct. F3 is the exact MIP; Benders is an iterative
+decomposition. When Benders reports a *higher* objective than F3, it means
+Benders stopped with a *suboptimal* feasible solution (not a formulation bug).
+
+Cause: Phase 2 adds Benders cuts only at integer solutions (MIPSOL). The
+solver can find a bad incumbent first; the cuts from that solution can make
+the LP relaxation such that the true optimal y is never visited or gets
+pruned. So the master "proves" optimality for the current (suboptimal) incumbent.
+
+Why does p-hub-arc (test_timing_comprehensive.py) match while p-median often doesn't?
+----------------------------------------------------------------------
+- p-median: N clients → N subproblems → at most N cuts per integer solution.
+  So the master gets few cuts per callback and the LP stays loose; the solver
+  can "prove" optimality for a bad y before exploring the true optimum.
+- p-hub-arc: n(n-1) OD pairs → O(n^2) subproblems → up to O(n^2) cuts per
+  integer solution. So each MIPSOL adds many more cuts; the LP tightens
+  quickly and the master rarely converges to a wrong incumbent.
+
+Try: Run with use_phase1=False (no warm start), or increase time_limit so
+more nodes are explored and more cuts are added.
 """
 
 import sys
@@ -533,18 +556,19 @@ def test_benders_vs_f3_n30_m40_p12():
 # Legacy main (run with python test_benders_f3.py)
 # ---------------------------------------------------------------------------
 
-def run_test(test_id, N, M, p, seed=None, time_limit=None):
-    """Run single test with print (for script mode)."""
+def run_test(test_id, N, M, p, seed=None, time_limit=None, use_phase1=True):
+    """Run single test with print (for script mode). use_phase1=False avoids warm start."""
     from new_model import solve_benders_pmedian
     dist, K, D = build_instance(N, M, p, seed)
     tl_str = f", time_limit={time_limit}s" if time_limit else ""
-    print(f"\n{'='*60}\nTest {test_id}: N={N}, M={M}, p={p}{tl_str}\n{'='*60}")
+    ph_str = "" if use_phase1 else " [no Phase1]"
+    print(f"\n{'='*60}\nTest {test_id}: N={N}, M={M}, p={p}{tl_str}{ph_str}\n{'='*60}")
     print("Solving F3...", end=" ", flush=True)
     f3_res = solve_F3_formulation(N, M, p, K, D, dist, time_limit=time_limit)
     print(f"done. Obj={f3_res['objective']:.4f}, Time={f3_res['time']:.4f}s")
     print("Solving Benders...", end=" ", flush=True)
     benders_res = solve_benders_pmedian(
-        N, M, p, dist, K=K, D=D, verbose=False, use_phase1=True, time_limit=time_limit
+        N, M, p, dist, K=K, D=D, verbose=False, use_phase1=use_phase1, time_limit=time_limit
     )
     print(f"done. Obj={benders_res['objective']:.4f}, Time={benders_res['time']:.4f}s")
     diff = abs(f3_res["objective"] - benders_res["objective"]) if (
@@ -581,21 +605,29 @@ SCRIPT_TEST_CONFIGS = [
 
 
 def main():
+    use_phase1 = "--no-phase1" not in sys.argv
     print("\n" + "="*70)
     print("BENDERS (Polynomial Separation) vs F3 FORMULATION")
     print("="*70)
     print(f"Running {len(SCRIPT_TEST_CONFIGS)} tests (script mode).")
-    print("For all pytest tests including n=50, run: python -m pytest benders/test_benders_f3.py -v")
+    if not use_phase1:
+        print("Mode: Benders WITHOUT Phase 1 warm start (use_phase1=False).")
+        print("      Try without this flag if you see many Match: NO.")
+    else:
+        print("To try without Phase 1 warm start: python test_benders_f3.py --no-phase1")
+    print("For all pytest tests: python -m pytest benders/test_benders_f3.py -v")
     print("="*70)
     results = []
     for test_id, N, M, p, seed, time_limit in SCRIPT_TEST_CONFIGS:
-        r = run_test(test_id, N, M, p, seed=seed, time_limit=time_limit)
+        r = run_test(test_id, N, M, p, seed=seed, time_limit=time_limit, use_phase1=use_phase1)
         results.append(r)
     passed = sum(1 for r in results if r["match"])
     print("\n" + "="*70)
     print("SUMMARY")
     print("="*70)
     print(f"Passed: {passed}/{len(results)}")
+    if passed < len(results) and use_phase1:
+        print("Tip: Run with --no-phase1 to see if more tests match (no warm start).")
     return passed == len(results)
 
 
