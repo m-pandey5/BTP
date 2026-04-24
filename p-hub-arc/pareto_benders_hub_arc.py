@@ -42,13 +42,25 @@ def _solve_dual_subproblem_pareto(
     C: Dict[Tuple[int, int], List[float]],
     L: Dict[Tuple[int, int], Dict[int, List[Tuple[int, int]]]],
     K: Dict[Tuple[int, int], int],
+    eps: float = 1e-6,
 ) -> Tuple[float, Dict[str, Any]]:
     """
     Solve dual subproblem for OD pair (i,j) with Pareto-optimal cut selection.
 
-    Step 1: Solve standard dual subproblem at y_bar -> z*
-    Step 2: Solve secondary problem -> nu that maximises cut at y_core
-            subject to cut value at y_bar remaining = z*
+    Uses the ε-perturbation trick (Magnanti-Wong 1981): instead of two LP
+    solves (standard dual → z*, then secondary with z* constraint), we solve
+    a SINGLE LP at the shifted point ỹ = y_bar + ε·y_core.
+
+    Mathematical basis
+    ------------------
+    The combined objective f(ν,ȳ) + ε·f(ν,y⁰) expands to f(ν, ỹ) + ε·C¹,
+    where ỹₐ = ȳₐ + ε·y⁰ₐ.  Maximising at ỹ in one LP therefore:
+      (a) selects a ν that is primary-optimal at ȳ  (ε small → primary dominates)
+      (b) among all such ν, picks the one with highest cut value at y⁰
+    That is exactly the Pareto-optimal (Magnanti-Wong) cut.
+
+    After solving, z* is recomputed at the original ȳ (not ỹ) for the
+    violation check and cut RHS.
     """
     Kij = K[(i, j)]
     if Kij <= 1:
@@ -57,78 +69,118 @@ def _solve_dual_subproblem_pareto(
     L1 = L[(i, j)][1]
     C1 = C[(i, j)][0]
 
-    # ------------------------------------------------------------------
-    # Step 1: Standard dual subproblem at y_bar
-    # ------------------------------------------------------------------
-    m1 = gp.Model(f"DSP_{i}_{j}")
-    m1.Params.OutputFlag = 0
+    # ỹ = ȳ + ε·y⁰  (shifted point used as the single solve target)
+    y_eff = {a: y_bar.get(a, 0.0) + eps * y_core.get(a, 0.0) for a in y_bar}
 
-    nu = m1.addVars(range(1, Kij + 1), lb=0.0, vtype=GRB.CONTINUOUS, name="nu")
+    m = gp.Model(f"DSP_pareto_{i}_{j}")
+    m.Params.OutputFlag = 0
 
-    obj1 = C1
-    obj1 += nu[1] * (1.0 - sum(y_bar.get(a, 0.0) for a in L1))
+    nu = m.addVars(range(1, Kij + 1), lb=0.0, vtype=GRB.CONTINUOUS, name="nu")
+
+    # Objective: f(ν, ỹ)  — single LP, no coupling constraint needed
+    obj = C1
+    obj += nu[1] * (1.0 - sum(y_eff.get(a, 0.0) for a in L1))
     for k in range(2, Kij + 1):
         Lk = L[(i, j)].get(k, [])
-        obj1 += nu[k] * (-sum(y_bar.get(a, 0.0) for a in Lk))
-    m1.setObjective(obj1, GRB.MAXIMIZE)
+        obj += nu[k] * (-sum(y_eff.get(a, 0.0) for a in Lk))
+    m.setObjective(obj, GRB.MAXIMIZE)
 
+    # Dual feasibility: νₖ − νₖ₊₁ ≤ C^{k+1} − C^k
     for k in range(1, Kij):
-        m1.addConstr(nu[k] - nu[k + 1] <= C[(i, j)][k] - C[(i, j)][k - 1])
+        m.addConstr(nu[k] - nu[k + 1] <= C[(i, j)][k] - C[(i, j)][k - 1])
 
-    m1.optimize()
+    m.optimize()
 
-    if m1.status != GRB.OPTIMAL:
+    if m.status != GRB.OPTIMAL:
         return None, {}
 
-    z_star = m1.ObjVal
-    fallback_nu = {k: nu[k].X for k in range(1, Kij + 1)}
+    nu_sol = {k: nu[k].X for k in range(1, Kij + 1)}
 
-    # ------------------------------------------------------------------
-    # Step 2: Secondary (Magnanti-Wong) problem
-    #
-    #   max   C1 + nu1*(1 - sum_{L1} y_core) - sum_{k>=2} nuk*sum_{Lk} y_core
-    #   s.t.  nuk - nu_{k+1} <= C^{k+1} - C^k          (dual feasibility)
-    #         nuk >= 0
-    #         C1 + nu1*(1 - sum_{L1} y_bar) - sum_{k>=2} nuk*sum_{Lk} y_bar
-    #             = z_star                               (optimality at y_bar)
-    # ------------------------------------------------------------------
-    m2 = gp.Model(f"DSP_pareto_{i}_{j}")
-    m2.Params.OutputFlag = 0
-
-    nu2 = m2.addVars(range(1, Kij + 1), lb=0.0, vtype=GRB.CONTINUOUS, name="nu")
-
-    # Objective: cut value at core point
-    obj2 = C1
-    obj2 += nu2[1] * (1.0 - sum(y_core.get(a, 0.0) for a in L1))
+    # Recompute true cut value at ȳ (not ỹ) for violation check and cut RHS
+    z_star = C1
+    z_star += nu_sol[1] * (1.0 - sum(y_bar.get(a, 0.0) for a in L1))
     for k in range(2, Kij + 1):
         Lk = L[(i, j)].get(k, [])
-        obj2 += nu2[k] * (-sum(y_core.get(a, 0.0) for a in Lk))
-    m2.setObjective(obj2, GRB.MAXIMIZE)
-
-    # Dual feasibility
-    for k in range(1, Kij):
-        m2.addConstr(nu2[k] - nu2[k + 1] <= C[(i, j)][k] - C[(i, j)][k - 1])
-
-    # Optimality fixation: cut at y_bar must equal z_star
-    opt_expr = C1
-    opt_expr += nu2[1] * (1.0 - sum(y_bar.get(a, 0.0) for a in L1))
-    for k in range(2, Kij + 1):
-        Lk = L[(i, j)].get(k, [])
-        opt_expr += nu2[k] * (-sum(y_bar.get(a, 0.0) for a in Lk))
-    m2.addConstr(opt_expr == z_star, name="optimality_fix")
-
-    m2.optimize()
-
-    if m2.status == GRB.OPTIMAL:
-        nu_sol = {k: nu2[k].X for k in range(1, Kij + 1)}
-    else:
-        nu_sol = fallback_nu  # fall back to step-1 solution
+        z_star -= nu_sol[k] * sum(y_bar.get(a, 0.0) for a in Lk)
 
     cut = {"i": i, "j": j, "Ki": Kij, "nu": nu_sol, "C1": C1}
     for k in range(1, Kij + 1):
         cut[f"L{k}"] = L[(i, j)].get(k, [])
 
     return z_star, cut
+
+
+def _solve_dual_subproblem_pareto_two_step(
+    i: int,
+    j: int,
+    y_bar: Dict[Tuple[int, int], float],
+    y_core: Dict[Tuple[int, int], float],
+    C: Dict[Tuple[int, int], List[float]],
+    L: Dict[Tuple[int, int], Dict[int, List[Tuple[int, int]]]],
+    K: Dict[Tuple[int, int], int],
+    tol: float = 1e-8,
+) -> Tuple[float, Dict[str, Any]]:
+    """
+    Exact two-step Magnanti-Wong separation.
+
+    Step 1: z* = max f(nu, y_bar) over dual-feasible nu.
+    Step 2: max f(nu, y_core) subject to dual-feasibility and
+            f(nu, y_bar) >= z* - tol.
+    """
+    Kij = K[(i, j)]
+    if Kij <= 1:
+        return None, {}
+
+    L1 = L[(i, j)][1]
+    C1 = C[(i, j)][0]
+
+    def f_at(nu_vars, y_point: Dict[Tuple[int, int], float]):
+        expr = C1
+        expr += nu_vars[1] * (1.0 - sum(y_point.get(a, 0.0) for a in L1))
+        for kk in range(2, Kij + 1):
+            Lk = L[(i, j)].get(kk, [])
+            expr += nu_vars[kk] * (-sum(y_point.get(a, 0.0) for a in Lk))
+        return expr
+
+    # Step 1: solve dual at y_bar
+    m1 = gp.Model(f"DSP_pareto_step1_{i}_{j}")
+    m1.Params.OutputFlag = 0
+    nu1 = m1.addVars(range(1, Kij + 1), lb=0.0, vtype=GRB.CONTINUOUS, name="nu")
+    for kk in range(1, Kij):
+        m1.addConstr(nu1[kk] - nu1[kk + 1] <= C[(i, j)][kk] - C[(i, j)][kk - 1])
+    m1.setObjective(f_at(nu1, y_bar), GRB.MAXIMIZE)
+    m1.optimize()
+    if m1.status != GRB.OPTIMAL:
+        return None, {}
+    z_star = float(m1.ObjVal)
+
+    # Step 2: maximize at core among solutions optimal at y_bar
+    m2 = gp.Model(f"DSP_pareto_step2_{i}_{j}")
+    m2.Params.OutputFlag = 0
+    nu2 = m2.addVars(range(1, Kij + 1), lb=0.0, vtype=GRB.CONTINUOUS, name="nu")
+    for kk in range(1, Kij):
+        m2.addConstr(nu2[kk] - nu2[kk + 1] <= C[(i, j)][kk] - C[(i, j)][kk - 1])
+    # Exact Magnanti-Wong optimality constraint at current incumbent y_bar.
+    m2.addConstr(f_at(nu2, y_bar) == z_star, name="mw_optimality_at_ybar")
+    m2.setObjective(f_at(nu2, y_core), GRB.MAXIMIZE)
+    m2.optimize()
+
+    if m2.status != GRB.OPTIMAL:
+        return None, {}
+
+    nu_sol = {kk: nu2[kk].X for kk in range(1, Kij + 1)}
+
+    # Recompute cut value at y_bar for violation check and RHS.
+    z_bar = C1
+    z_bar += nu_sol[1] * (1.0 - sum(y_bar.get(a, 0.0) for a in L1))
+    for kk in range(2, Kij + 1):
+        Lk = L[(i, j)].get(kk, [])
+        z_bar -= nu_sol[kk] * sum(y_bar.get(a, 0.0) for a in Lk)
+
+    cut = {"i": i, "j": j, "Ki": Kij, "nu": nu_sol, "C1": C1}
+    for kk in range(1, Kij + 1):
+        cut[f"L{kk}"] = L[(i, j)].get(kk, [])
+    return z_bar, cut
 
 
 def separation_pareto(
@@ -140,6 +192,7 @@ def separation_pareto(
     K: Dict[Tuple[int, int], int],
     od_pairs: List[Tuple[int, int]],
     tol: float = 1e-6,
+    pareto_method: str = "epsilon",
 ) -> Tuple[List[Tuple[Tuple[int, int], Dict]], float]:
     """
     Pareto-optimal separation: generate violated Benders cuts using
@@ -154,7 +207,12 @@ def separation_pareto(
             UB += C[(i, j)][0] if Kij == 1 else 0.0
             continue
 
-        sp_obj, cut = _solve_dual_subproblem_pareto(i, j, y_bar, y_core, C, L, K)
+        if pareto_method == "two_step":
+            sp_obj, cut = _solve_dual_subproblem_pareto_two_step(
+                i, j, y_bar, y_core, C, L, K, tol=tol
+            )
+        else:
+            sp_obj, cut = _solve_dual_subproblem_pareto(i, j, y_bar, y_core, C, L, K)
         if sp_obj is None:
             continue
 
@@ -178,6 +236,7 @@ class ParetoBendersCutCallback:
         od_pairs: List[Tuple[int, int]],
         y_vars: Dict, theta_vars: Dict,
         y_core: Dict[Tuple[int, int], float],
+        pareto_method: str,
     ):
         self.C = C
         self.L = L
@@ -186,6 +245,7 @@ class ParetoBendersCutCallback:
         self.y_vars = y_vars
         self.theta_vars = theta_vars
         self.y_core = y_core
+        self.pareto_method = pareto_method
 
     def __call__(self, model, where):
         if where != GRB.Callback.MIPSOL:
@@ -200,6 +260,7 @@ class ParetoBendersCutCallback:
         cuts, _ = separation_pareto(
             y_bar, theta_bar, self.y_core,
             self.C, self.L, self.K, self.od_pairs,
+            pareto_method=self.pareto_method,
         )
 
         for ((i, j), cut_data) in cuts:
@@ -222,6 +283,11 @@ class ParetoBendersCutCallback:
 # Full solver
 # ============================================================
 
+def _uniform_y_core(H: List[Tuple[int, int]], p: int) -> Dict[Tuple[int, int], float]:
+    """Magnanti–Wong core: interior of {y >= 0, sum y = p, y <= 1} when |H| > p."""
+    return {a: p / len(H) for a in H}
+
+
 def solve_benders_pareto_hub_arc(
     n: int,
     p: int,
@@ -230,6 +296,8 @@ def solve_benders_pareto_hub_arc(
     time_limit: float = None,
     verbose: bool = False,
     use_phase1: bool = True,
+    core_lp_blend: float = 0.0,
+    pareto_method: str = "epsilon",
 ) -> Dict[str, Any]:
     """
     Solve p-hub-arc using two-phase Benders with Pareto-optimal cuts.
@@ -241,6 +309,14 @@ def solve_benders_pareto_hub_arc(
     time_limit : seconds (optional)
     verbose : print progress
     use_phase1 : run LP relaxation warmstart before Phase 2
+    core_lp_blend : in [0, 1], convex blend of MW core with Phase 1 final LP y.
+        0 (default) = pure uniform p/|H| (classical interior core).
+        >0 = y_core = (1-blend)*uniform + blend*y_LP; biases Pareto dual toward
+        the Phase 1 relaxation (heuristic; keep < 1 so y_core stays strictly
+        positive on every arc). Ignored if use_phase1 is False.
+    pareto_method : "epsilon" (single-LP perturbation) or "two_step"
+        (exact MW: solve at y_bar first, then maximize at core with
+         optimality-at-y_bar constraint).
 
     Returns
     -------
@@ -250,9 +326,7 @@ def solve_benders_pareto_hub_arc(
 
     H, C, L, K, cost_map, arcs_sorted, od_pairs = preprocess(n, W, D)
 
-    # Core point: uniform fractional y strictly inside the master feasible region
-    # (satisfies sum y_a = p, with each y_a = p/|H| in (0,1))
-    y_core = {a: p / len(H) for a in H}
+    y_core = _uniform_y_core(H, p)
 
     # ------------------------------------------------------------------
     # Phase 1: LP relaxation warmstart
@@ -276,7 +350,7 @@ def solve_benders_pareto_hub_arc(
 
         if verbose:
             print("Phase 1: Solving LP relaxation...")
-        LB1, y1, UB1, _, _, _ = phase1_solve_mp(
+        LB1, y1, UB1, model_p1, y_vars_p1, _ = phase1_solve_mp(
             n, p, H, C, L, K, od_pairs,
             cost_map, arcs_sorted,
             y_heuristic=y_heuristic,
@@ -285,6 +359,19 @@ def solve_benders_pareto_hub_arc(
         )
         if verbose:
             print(f"Phase 1 done: LB={LB1:.4f}, UB={UB1:.4f}")
+
+        b = min(max(core_lp_blend, 0.0), 1.0)
+        if b > 0.0:
+            # Keep the Phase-1 model alive while reading solution values.
+            # If the model gets garbage-collected, Var proxies may no longer expose X.
+            y_lp = {a: float(y_vars_p1[a].X) for a in H}
+            u = _uniform_y_core(H, p)
+            y_core = {a: (1.0 - b) * u[a] + b * y_lp[a] for a in H}
+            if verbose:
+                print(
+                    f"Pareto core: blend uniform with Phase-1 LP y "
+                    f"(core_lp_blend={b:.3f})"
+                )
 
     # ------------------------------------------------------------------
     # Phase 2: Branch-and-Benders-cut with Pareto-optimal cuts
@@ -316,7 +403,7 @@ def solve_benders_pareto_hub_arc(
             y_vars[a].Start = 1.0 if y1.get(a, 0) > 0.5 else 0.0
 
     callback = ParetoBendersCutCallback(
-        C, L, K, od_pairs, y_vars, theta_vars, y_core
+        C, L, K, od_pairs, y_vars, theta_vars, y_core, pareto_method
     )
     model.optimize(callback)
 

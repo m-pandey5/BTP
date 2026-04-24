@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Pareto-Optimal Benders Decomposition</title>
+<style>
+  body { font-family: Georgia, serif; max-width: 900px; margin: 40px auto; padding: 0 30px; font-size: 15px; line-height: 1.7; color: #111; }
+  h1 { font-size: 26px; border-bottom: 3px solid #1a1a6e; padding-bottom: 10px; color: #1a1a6e; }
+  h2 { font-size: 20px; color: #1a1a6e; margin-top: 36px; border-left: 4px solid #1a1a6e; padding-left: 10px; }
+  h3 { font-size: 16px; color: #333; margin-top: 24px; }
+  .subtitle { color: #555; font-size: 16px; margin-top: 4px; }
+  .authors  { color: #777; font-size: 14px; margin-bottom: 30px; }
+  .box  { border: 1px solid #888; border-radius: 6px; padding: 14px 18px; margin: 18px 0; }
+  .blue   { background: #e8f0ff; border-color: #4466cc; }
+  .green  { background: #e8ffe8; border-color: #2a882a; }
+  .yellow { background: #fffff0; border-color: #aaaa00; }
+  .formula { background: #f5f5f5; border: 1px solid #ccc; border-radius: 4px;
+             padding: 10px 16px; font-family: "Courier New", monospace; font-size: 13.5px;
+             margin: 14px 0; white-space: pre; overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; margin: 20px 0; font-size: 14px; }
+  th { background: #1a1a6e; color: white; padding: 8px 12px; text-align: left; }
+  td { border: 1px solid #ccc; padding: 7px 12px; }
+  tr:nth-child(even) td { background: #f5f5ff; }
+  pre { background: #1e1e2e; color: #cdd6f4; padding: 16px; border-radius: 6px;
+        font-size: 12.5px; overflow-x: auto; line-height: 1.6; font-family: "Courier New", monospace; }
+  .kw  { color: #89b4fa; font-weight: bold; }
+  .cm  { color: #6c7086; font-style: italic; }
+  .st  { color: #a6e3a1; }
+  .num { color: #fab387; }
+  .fn  { color: #89dceb; }
+  ul li { margin: 5px 0; }
+  .check { color: green; font-size: 18px; }
+  @media print {
+    body { margin: 20px; }
+    pre, .formula { page-break-inside: avoid; }
+    h2 { page-break-after: avoid; }
+  }
+</style>
+</head>
+<body>
+
+<h1>Pareto-Optimal Benders Decomposition</h1>
+<div class="subtitle">For the <em>p</em>-Hub-Arc Problem &mdash; Mathematical Derivation &amp; Implementation</div>
+<div class="authors">Based on Magnanti &amp; Wong (1981) &bull; Ramamoorthy et al. (EJOR 2024)</div>
+
+<!-- ======================================================== -->
+<h2>1. Problem Setting: <em>p</em>-Hub-Arc</h2>
+<!-- ======================================================== -->
+
+<p>Given <em>n</em> nodes, select exactly <em>p</em> directed <strong>hub arcs</strong>
+from the n(n&minus;1) candidates H = {(u,v) : u &ne; v}. Every OD pair (i,j)
+routes its flow through the <em>cheapest open arc</em>.</p>
+
+<div class="formula">Binary variable:  y_a &isin; {0,1}  for all a &isin; H,   with  &sum; y_a = p
+
+Arc cost:  c_ij(u,v) = W_ij &middot; (D_iu + D_uv + D_vj)
+
+After sorting unique costs per (i,j):
+  C&sup1;_ij &le; C&sup2;_ij &le; ... &le; C^K_ij    (K distinct levels)
+  L^k_ij = set of arcs at cost level k</div>
+
+<!-- ======================================================== -->
+<h2>2. Benders Master Problem</h2>
+<!-- ======================================================== -->
+
+<p>Introduce surrogates &theta;<sub>ij</sub> for each OD pair with K<sub>ij</sub> &gt; 1:</p>
+
+<div class="formula">min   &sum;_(i,j)  &theta;_ij   +   &sum;_(i,j): K=1  C&sup1;_ij
+
+s.t.  &sum;_(a &isin; H)  y_a = p
+      &theta;_ij &ge;  Benders cuts
+      y_a &isin; {0,1},   &theta;_ij &ge; 0</div>
+
+<p>At each integer node, a <strong>subproblem per OD pair</strong> checks if the cut
+&theta;<sub>ij</sub> &ge; actual routing cost, and if not, adds a Benders cut.</p>
+
+<!-- ======================================================== -->
+<h2>3. The Cut Value Function &amp; Dual Subproblem</h2>
+<!-- ======================================================== -->
+
+<p>Define the <strong>cut value function</strong> for dual variables &nu; at any point y:</p>
+
+<div class="formula">f(&nu;, y)  =  C&sup1;  +  &nu;_1 (1 &minus; &sum;_(a&isin;L&sup1;) y_a)  &minus;  &sum;_(k=2)^K  &nu;_k  &sum;_(a&isin;L^k)  y_a</div>
+
+<div class="box blue">
+  <strong>Standard Dual Subproblem DS<sup>ij</sup>(y&#772;):</strong>
+  <div class="formula">z* = max_&nu;  f(&nu;, y&#772;)
+
+s.t.  &nu;_k &minus; &nu;_(k+1)  &le;  C^(k+1) &minus; C^k     (dual feasibility)
+      &nu;_k &ge; 0,   k = 1,...,K</div>
+  <strong>Benders cut added to master:</strong>
+  &nbsp;&nbsp;&nbsp;&theta;_ij &ge; f(&nu;*, y)  &nbsp;&nbsp; (using optimal &nu;* found above)
+</div>
+
+<!-- ======================================================== -->
+<h2>4. The Weakness Problem: Multiple Dual Optima</h2>
+<!-- ======================================================== -->
+
+<div class="box yellow">
+  <strong>Why standard cuts can be weak:</strong>
+  <p>The dual LP usually has <em>many optimal solutions</em> &nu;* all achieving the
+  same z* at y&#772;. Different &nu;* give different cuts:</p>
+  <div class="formula">&theta;_ij &ge; f(&nu;<sup>(1)</sup>, y)    vs.    &theta;_ij &ge; f(&nu;<sup>(2)</sup>, y)</div>
+  <p>Both valid, but one may be <em>much tighter</em> at future integer solutions.
+  A weak cut barely restricts &theta; away from y&#772;, causing more B&amp;B nodes.</p>
+
+  <strong>Small example:</strong> K=3, C = [2, 5, 9]
+  <ul>
+    <li>&nu;<sup>(1)</sup> = (3, 2, 0): cut &theta; &ge; 2 + 3(1&minus;&sum;L&sup1;y) &minus; 2&sum;L&sup2;y &nbsp; &larr; involves cost levels 1 and 2</li>
+    <li>&nu;<sup>(2)</sup> = (5, 0, 0): cut &theta; &ge; 2 + 5(1&minus;&sum;L&sup1;y) &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; &larr; only uses cost level 1</li>
+  </ul>
+  Both achieve z*=4 at y&#772;. But &nu;<sup>(1)</sup> is tighter when L&sup2; arcs are open.
+</div>
+
+<!-- ======================================================== -->
+<h2>5. Magnanti-Wong Pareto Selection</h2>
+<!-- ======================================================== -->
+
+<h3>5.1 Core Point</h3>
+<p>A <strong>core point</strong> y&deg; lies strictly inside the master feasible region:</p>
+<div class="formula">y&deg;_a  =  p / |H|   for all a &isin; H
+
+Satisfies:  &sum; y&deg;_a = p   (feasible)   and   0 &lt; y&deg;_a &lt; 1   (strictly interior)</div>
+
+<h3>5.2 Two-Step Pareto Dual (original approach, 2 LP solves)</h3>
+
+<div class="box blue">
+  <strong>Pareto Dual Subproblem:</strong>
+
+  <p><strong>Step 1.</strong> Solve DS<sup>ij</sup>(y&#772;) &rarr; get z*</p>
+
+  <p><strong>Step 2.</strong> Among all dual-optimal &nu; at y&#772;, find the one
+  maximising cut tightness at the core point y&deg;:</p>
+  <div class="formula">max_&nu;  f(&nu;, y&deg;)                      &larr; maximise at core point
+
+s.t.  f(&nu;, y&#772;) = z*                   &larr; must stay optimal at y&#772;
+      &nu;_k &minus; &nu;_(k+1) &le; C^(k+1) &minus; C^k    &larr; dual feasibility
+      &nu;_k &ge; 0</div>
+  <strong>Cost: 2 LP solves per OD pair per node (original implementation)</strong>
+</div>
+
+<p>The resulting cut is:</p>
+<ul>
+  <li><strong>Valid</strong> &mdash; &nu;* is dual-feasible</li>
+  <li><strong>Tight at y&#772;</strong> &mdash; f(&nu;*, y&#772;) = z*, same as standard</li>
+  <li><strong>Pareto-dominant</strong> &mdash; strongest possible among all valid cuts at this node</li>
+</ul>
+
+<!-- ======================================================== -->
+<h2>6. The &epsilon;-Perturbation Trick: One LP Only</h2>
+<!-- ======================================================== -->
+
+<p>Instead of 2 LPs with a coupling constraint, combine into one objective:</p>
+<div class="formula">max_&nu;   f(&nu;, y&#772;)  +  &epsilon; &middot; f(&nu;, y&deg;),     &epsilon; &gt; 0 small (e.g. 10&minus;&sup6;)</div>
+
+<h3>6.1 Algebraic Simplification</h3>
+
+<div class="formula">f(&nu;,y&#772;) + &epsilon;&middot;f(&nu;,y&deg;)
+
+= C&sup1; + &nu;_1(1 &minus; &sum;_L&sup1; y&#772;) &minus; &sum;_(k&ge;2) &nu;_k &sum;_L^k y&#772;
++ &epsilon;[C&sup1; + &nu;_1(1 &minus; &sum;_L&sup1; y&deg;) &minus; &sum;_(k&ge;2) &nu;_k &sum;_L^k y&deg;]
+
+= (1+&epsilon;)C&sup1;
+  + &nu;_1 [(1+&epsilon;) &minus; &sum;_L&sup1; (y&#772;_a + &epsilon; y&deg;_a)]
+  &minus; &sum;_(k&ge;2) &nu;_k [&sum;_L^k (y&#772;_a + &epsilon; y&deg;_a)]
+
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;constant       &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;|&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;|
+= &epsilon;C&sup1;   +   f(&nu;,  y&#771;)   where  y&#771;_a = y&#772;_a + &epsilon; y&deg;_a</div>
+
+<div class="box green">
+  <strong>Key Result (the &epsilon;-perturbation identity):</strong>
+  <div class="formula">max_&nu; [f(&nu;,y&#772;) + &epsilon;&middot;f(&nu;,y&deg;)]  =  &epsilon;C&sup1; + max_&nu; f(&nu;, y&#771;)
+
+where  y&#771;_a = y&#772;_a + &epsilon; y&deg;_a   (shifted point)</div>
+
+  <strong>Consequence:</strong> Run the standard dual LP once at y&#771; &mdash; you get the Pareto-optimal &nu; directly. <strong>1 LP instead of 2.</strong>
+
+  <br><br>
+  <strong>Why it works:</strong>
+  <ul>
+    <li>&epsilon; small &rarr; primary term f(&nu;,y&#772;) dominates &rarr; &nu;* is still dual-optimal at y&#772;</li>
+    <li>Among all dual-optimal &nu;, the &epsilon;&middot;f(&nu;,y&deg;) term acts as a tiebreaker selecting the one with highest cut value at y&deg;</li>
+  </ul>
+</div>
+
+<h3>6.2 After Solving at y&#771;</h3>
+<p>The cut violation check must use the true z* at original y&#772; (not the shifted y&#771;):</p>
+<div class="formula">z*  =  f(&nu;*, y&#772;)  =  C&sup1; + &nu;*_1(1 &minus; &sum;_L&sup1; y&#772;_a) &minus; &sum;_(k&ge;2) &nu;*_k &sum;_L^k y&#772;_a</div>
+
+<h3>6.3 Choosing &epsilon;</h3>
+<div class="formula">Practical:     &epsilon; = 10&minus;&sup6;   (standard in Magnanti-Wong literature)
+
+Principled:    &epsilon; &lt;  min_k (C^(k+1) &minus; C^k) / max_range(f(&nu;, y&deg;))</div>
+
+<!-- ======================================================== -->
+<h2>7. Full Algorithm</h2>
+<!-- ======================================================== -->
+
+<table>
+  <tr><th>Step</th><th>Phase</th><th>Action</th><th>Purpose</th></tr>
+  <tr><td>1</td><td>Preprocessing</td><td>Build H, compute all cost levels C^k, level sets L^k, K_ij for each OD pair</td><td>Data structure for fast cut generation</td></tr>
+  <tr><td>2</td><td>Core point</td><td>y&deg;_a = p / |H| for all a</td><td>Interior reference point for Pareto selection</td></tr>
+  <tr><td>3</td><td>Phase 1: LP relax</td><td>Relax y to [0,1]; run cutting-plane loop with <em>standard</em> dual until convergence</td><td>Get warm-start y<sub>1</sub> = round(y&#772;) for Phase 2</td></tr>
+  <tr><td>4</td><td>Phase 2: MIP</td><td>Build integer master; set MIP start y<sub>1</sub>; register lazy callback</td><td>Solve to proven optimality</td></tr>
+  <tr><td>5</td><td>Each integer node</td><td>Compute y&#771; = y&#772; + &epsilon;y&deg;; solve DS<sup>ij</sup>(y&#771;) for each OD pair; recompute z* at y&#772;; add lazy cuts if &theta;_ij &lt; z*</td><td>Add Pareto-optimal cuts</td></tr>
+  <tr><td>6</td><td>Output</td><td>Recover y*, obj = MIP obj + &sum;_(K=1) C&sup1;_ij</td><td>Add trivial OD pairs back to objective</td></tr>
+</table>
+
+<!-- ======================================================== -->
+<h2>8. Code Walkthrough</h2>
+<!-- ======================================================== -->
+
+<h3>8.1 Single-LP Pareto Dual</h3>
+<pre><span class="cm"># pareto_benders_hub_arc.py</span>
+
+<span class="kw">def</span> <span class="fn">_solve_dual_subproblem_pareto</span>(i, j, y_bar, y_core, C, L, K, eps=<span class="num">1e-6</span>):
+    Kij = K[(i, j)]
+    L1  = L[(i, j)][<span class="num">1</span>]
+    C1  = C[(i, j)][<span class="num">0</span>]
+
+    <span class="cm"># STEP 1: build shifted point  y_eff = y_bar + eps * y_core</span>
+    y_eff = {a: y_bar.get(a, <span class="num">0.</span>) + eps * y_core.get(a, <span class="num">0.</span>) <span class="kw">for</span> a <span class="kw">in</span> y_bar}
+
+    <span class="cm"># STEP 2: standard dual LP at y_eff  (ONE solve, no coupling constraint)</span>
+    m  = gp.Model(); m.Params.OutputFlag = <span class="num">0</span>
+    nu = m.addVars(range(<span class="num">1</span>, Kij+<span class="num">1</span>), lb=<span class="num">0.</span>, vtype=GRB.CONTINUOUS)
+
+    obj = C1 + nu[<span class="num">1</span>] * (<span class="num">1.</span> - sum(y_eff.get(a, <span class="num">0.</span>) <span class="kw">for</span> a <span class="kw">in</span> L1))
+    <span class="kw">for</span> k <span class="kw">in</span> range(<span class="num">2</span>, Kij+<span class="num">1</span>):
+        Lk = L[(i,j)].get(k, [])
+        obj -= nu[k] * sum(y_eff.get(a, <span class="num">0.</span>) <span class="kw">for</span> a <span class="kw">in</span> Lk)
+    m.setObjective(obj, GRB.MAXIMIZE)
+
+    <span class="kw">for</span> k <span class="kw">in</span> range(<span class="num">1</span>, Kij):                    <span class="cm"># dual feasibility</span>
+        m.addConstr(nu[k] - nu[k+<span class="num">1</span>] &lt;= C[(i,j)][k] - C[(i,j)][k-<span class="num">1</span>])
+    m.optimize()
+
+    nu_sol = {k: nu[k].X <span class="kw">for</span> k <span class="kw">in</span> range(<span class="num">1</span>, Kij+<span class="num">1</span>)}
+
+    <span class="cm"># STEP 3: recompute z* at ORIGINAL y_bar (not y_eff!)</span>
+    z_star = C1 + nu_sol[<span class="num">1</span>] * (<span class="num">1.</span> - sum(y_bar.get(a, <span class="num">0.</span>) <span class="kw">for</span> a <span class="kw">in</span> L1))
+    <span class="kw">for</span> k <span class="kw">in</span> range(<span class="num">2</span>, Kij+<span class="num">1</span>):
+        Lk = L[(i,j)].get(k, [])
+        z_star -= nu_sol[k] * sum(y_bar.get(a, <span class="num">0.</span>) <span class="kw">for</span> a <span class="kw">in</span> Lk)
+
+    cut = {<span class="st">"Ki"</span>: Kij, <span class="st">"nu"</span>: nu_sol, <span class="st">"C1"</span>: C1}
+    <span class="kw">for</span> k <span class="kw">in</span> range(<span class="num">1</span>, Kij+<span class="num">1</span>): cut[<span class="st">f"L{k}"</span>] = L[(i,j)].get(k, [])
+    <span class="kw">return</span> z_star, cut</pre>
+
+<h3>8.2 Lazy Callback (Phase 2 — fires at every integer node)</h3>
+<pre><span class="kw">class</span> <span class="fn">ParetoBendersCutCallback</span>:
+    <span class="kw">def</span> <span class="fn">__call__</span>(self, model, where):
+        <span class="kw">if</span> where != GRB.Callback.MIPSOL: <span class="kw">return</span>
+
+        y_bar   = {a: model.cbGetSolution(self.y_vars[a])          <span class="kw">for</span> a <span class="kw">in</span> ...}
+        theta_b = {(i,j): model.cbGetSolution(self.theta_vars[...]) <span class="kw">for</span> ...}
+
+        <span class="cm"># Pareto separation: internally uses y_eff = y_bar + eps*y_core</span>
+        cuts, _ = <span class="fn">separation_pareto</span>(y_bar, theta_b, self.y_core, ...)
+
+        <span class="kw">for</span> ((i,j), cut) <span class="kw">in</span> cuts:
+            nu   = cut[<span class="st">"nu"</span>]
+            expr = cut[<span class="st">"C1"</span>]
+            expr += nu[<span class="num">1</span>] * (<span class="num">1.</span> - gp.quicksum(self.y_vars[a] <span class="kw">for</span> a <span class="kw">in</span> cut[<span class="st">"L1"</span>]))
+            <span class="kw">for</span> k <span class="kw">in</span> range(<span class="num">2</span>, cut[<span class="st">"Ki"</span>]+<span class="num">1</span>):
+                expr -= nu[k] * gp.quicksum(self.y_vars[a] <span class="kw">for</span> a <span class="kw">in</span> cut[<span class="st">f"L{k}"</span>])
+            model.cbLazy(self.theta_vars[(i,j)] &gt;= expr)  <span class="cm"># add Pareto cut</span></pre>
+
+<h3>8.3 Core Point</h3>
+<pre><span class="cm"># p arcs selected from |H| = n(n-1) candidates</span>
+<span class="cm"># Uniform interior share: sum = p, each value in (0,1)</span>
+y_core = {a: p / len(H) <span class="kw">for</span> a <span class="kw">in</span> H}</pre>
+
+<!-- ======================================================== -->
+<h2>9. Strategy Comparison</h2>
+<!-- ======================================================== -->
+
+<table>
+  <tr><th>Property</th><th>Plain Benders</th><th>McDaniel &amp; Devine</th><th>Pareto Benders</th></tr>
+  <tr><td>Phase 1 LP warm-start</td><td>&#10003;</td><td>&#10003;</td><td>&#10003;</td></tr>
+  <tr><td>Phase 1 cuts &rarr; Phase 2</td><td>warm-start y only</td><td>all cuts pre-loaded as constraints</td><td>warm-start y only</td></tr>
+  <tr><td>LPs per OD pair per node</td><td>1</td><td>1</td><td>1 (after &epsilon;-trick)</td></tr>
+  <tr><td>Cut quality</td><td>standard (arbitrary dual)</td><td>standard</td><td><strong>Pareto-optimal</strong></td></tr>
+  <tr><td>Fewer B&amp;B nodes?</td><td>No baseline</td><td>Yes (tighter LP bound)</td><td>Yes (stronger cuts)</td></tr>
+  <tr><td>Implementation complexity</td><td>Low</td><td>Medium</td><td>Low (1 LP change)</td></tr>
+</table>
+
+<!-- ======================================================== -->
+<h2>References</h2>
+<!-- ======================================================== -->
+<ul>
+  <li>Magnanti, T.L. &amp; Wong, R.T. (1981). Accelerating Benders decomposition: Algorithmic enhancement and model selection criteria. <em>Operations Research</em>, 29(3), 464&ndash;484.</li>
+  <li>McDaniel, D. &amp; Devine, M. (1977). A modified Benders partitioning algorithm for mixed integer programming. <em>Management Science</em>, 24(3), 312&ndash;319.</li>
+  <li>Ramamoorthy, P., et al. (2024). Benders decomposition for the p-hub arc location problem. <em>European Journal of Operational Research</em>.</li>
+</ul>
+
+<hr>
+<p style="color:#999;font-size:12px;text-align:center">
+  To convert to PDF: Open in browser &rarr; File &rarr; Print &rarr; Save as PDF.
+  Or compile <code>pareto_benders_explanation.tex</code> with pdflatex if TeX is installed.
+</p>
+</body>
+</html>

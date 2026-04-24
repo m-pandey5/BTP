@@ -14,6 +14,7 @@ def solve_hub_arc_F3(
     W: List[List[float]],
     D: List[List[float]],
     gurobi_output: bool = True,
+    time_limit: float = None,
 ) -> Dict[str, Any]:
     """
     Canonical F3 formulation for the p-Hub-Arc problem.
@@ -35,6 +36,8 @@ def solve_hub_arc_F3(
 
     model = gp.Model("HubArc_F3")
     model.Params.OutputFlag = 1 if gurobi_output else 0
+    if time_limit is not None and time_limit > 0:
+        model.Params.TimeLimit = time_limit
 
     # ---- 1. Precompute cost levels C_{ij}^k and arcs L_{ij}^k ----
     C: Dict[Tuple[int, int], List[float]] = {}

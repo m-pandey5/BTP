@@ -1,0 +1,453 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{hyperref}
+\usepackage{tcolorbox}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,shapes}
+
+\definecolor{codeblue}{RGB}{0,100,180}
+\definecolor{codegray}{RGB}{128,128,128}
+\definecolor{codegreen}{RGB}{0,140,0}
+\definecolor{lightblue}{RGB}{230,240,255}
+\definecolor{lightyellow}{RGB}{255,255,220}
+\definecolor{lightgreen}{RGB}{220,255,220}
+
+\lstset{
+  language=Python,
+  basicstyle=\ttfamily\small,
+  keywordstyle=\color{codeblue}\bfseries,
+  commentstyle=\color{codegreen},
+  stringstyle=\color{codegray},
+  frame=single,
+  breaklines=true,
+  numbers=left,
+  numberstyle=\tiny\color{codegray},
+  showstringspaces=false,
+}
+
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{definition}{Definition}
+\newtheorem{remark}{Remark}
+
+\title{\textbf{Pareto-Optimal Benders Decomposition} \\[0.5em]
+       \large For the $p$-Hub-Arc Problem \\[0.3em]
+       \normalsize Mathematical Derivation, Algorithm, and Implementation}
+\author{Based on Magnanti \& Wong (1981) and Ramamoorthy et al.\ (EJOR 2024)}
+\date{\today}
+
+\begin{document}
+\maketitle
+\tableofcontents
+\newpage
+
+% ============================================================
+\section{Problem Setting: $p$-Hub-Arc}
+% ============================================================
+
+Given $n$ nodes, we select exactly $p$ directed \emph{hub arcs} from the
+$n(n-1)$ candidate arcs $H = \{(u,v) : u \neq v\}$.  Every
+origin--destination (OD) pair $(i,j)$ routes its flow through the cheapest
+open arc.
+
+\paragraph{Binary decision variable.}
+$$y_a \in \{0,1\}, \quad a \in H, \qquad \sum_{a \in H} y_a = p.$$
+
+\paragraph{Routing cost for OD pair $(i,j)$.}
+For arc $(u,v)$ the cost is
+$$c_{ij}(u,v) = W_{ij}\bigl(D_{iu}+D_{uv}+D_{vj}\bigr).$$
+After sorting all $n(n{-}1)$ arc costs for $(i,j)$, we obtain
+$K_{ij}$ \emph{distinct} levels $C^1_{ij} \le C^2_{ij} \le \cdots \le C^{K_{ij}}_{ij}$
+with $L^k_{ij}$ = set of arcs at cost level $k$.
+
+The OD cost equals $C^1_{ij}$ (cheapest open arc):
+$$f(y, i, j) = \min_{k : \exists\, a \in L^k_{ij},\, y_a=1} C^k_{ij}.$$
+
+The full problem (F3 formulation) is:
+$$\min_{y} \sum_{(i,j)} f(y,i,j) \quad \text{s.t.} \quad \sum_a y_a = p,\; y_a \in \{0,1\}.$$
+
+% ============================================================
+\section{Benders Decomposition Structure}
+% ============================================================
+
+Introduce a surrogate $\theta_{ij} \approx f(y,i,j)$ for each OD pair with
+$K_{ij} > 1$.  The \textbf{master problem} is:
+
+\begin{alignat}{2}
+\min_{y,\theta}\quad & \sum_{(i,j)} \theta_{ij} + \sum_{\substack{(i,j):\\K_{ij}=1}} C^1_{ij}\\
+\text{s.t.}\quad & \sum_{a \in H} y_a = p \label{eq:p}\\
+                 & \theta_{ij} \ge \text{Benders cuts} \quad \forall (i,j)\\
+                 & y_a \in \{0,1\},\; \theta_{ij} \ge 0
+\end{alignat}
+
+At each candidate integer solution $\bar{y}$, we solve a
+\textbf{subproblem per OD pair} to check feasibility and generate cuts.
+
+% ============================================================
+\section{Dual Subproblem and Cut Formula}
+% ============================================================
+
+\subsection{Standard Dual Subproblem DS$^{ij}$}
+
+For OD pair $(i,j)$ at current master solution $\bar{y}$, the dual
+subproblem is:
+
+\begin{tcolorbox}[colback=lightblue,title=\textbf{Dual Subproblem} $\text{DS}^{ij}(\bar{y})$]
+\begin{alignat}{2}
+z^* = \max_{\nu}\quad & C^1 + \nu_1\!\left(1-\sum_{a\in L^1}\bar{y}_a\right)
+      - \sum_{k=2}^{K}\nu_k\sum_{a\in L^k}\bar{y}_a \label{eq:dobj}\\
+\text{s.t.}\quad & \nu_k - \nu_{k+1} \le C^{k+1}-C^k, \quad k=1,\ldots,K-1 \label{eq:dfeas}\\
+                 & \nu_k \ge 0, \quad k=1,\ldots,K
+\end{alignat}
+\end{tcolorbox}
+
+Define $f(\nu, y) := C^1 + \nu_1(1-\sum_{L^1}y_a) - \sum_{k\ge 2}\nu_k\sum_{L^k}y_a$.
+
+\medskip
+\noindent The resulting \textbf{Benders cut} is:
+$$\boxed{\theta_{ij} \;\ge\; C^1 + \nu_1^*\!\left(1 - \sum_{a\in L^1}y_a\right)
+  - \sum_{k=2}^{K}\nu_k^*\sum_{a\in L^k}y_a}$$
+
+This cut is \emph{valid} (never cuts off feasible solutions) but may be \emph{weak}
+when the dual LP has multiple optimal solutions.
+
+% ============================================================
+\section{The Weakness Problem: Multiple Dual Optima}
+% ============================================================
+
+\begin{tcolorbox}[colback=lightyellow,title=\textbf{Why standard cuts can be weak}]
+The dual LP \eqref{eq:dobj}--\eqref{eq:dfeas} often has multiple optimal
+solutions $\nu^*$ achieving the same $z^*$ at $\bar{y}$.  Different choices give
+different cuts:
+$$\theta_{ij} \ge f(\nu^{(1)}, y) \quad \text{vs.} \quad \theta_{ij} \ge f(\nu^{(2)}, y)$$
+Both are valid, but one may be \emph{much tighter} at the true
+optimal $y^*$ (which we haven't found yet).  A weak cut barely restricts $\theta_{ij}$
+away from $\bar{y}$, slowing convergence.
+\end{tcolorbox}
+
+\paragraph{Small example.} Suppose $K=3$, $C^1=1, C^2=3, C^3=6$.
+At $\bar{y}$, two dual solutions both achieve $z^*=4$:
+\begin{itemize}
+  \item $\nu^{(1)} = (3, 2, 0)$: cut $\theta_{ij} \ge 1 + 3(1-\sum_{L^1}y) - 2\sum_{L^2}y$
+  \item $\nu^{(2)} = (5, 0, 0)$: cut $\theta_{ij} \ge 1 + 5(1-\sum_{L^1}y)$
+\end{itemize}
+Both are equally tight at $\bar{y}$ (both give $z^*=4$), but $\nu^{(1)}$ might
+be much tighter at the optimal $y^*$ because it involves all cost levels.
+The Pareto approach picks the \emph{systematically best} $\nu^*$.
+
+% ============================================================
+\section{Magnanti-Wong Pareto-Optimal Cuts}
+% ============================================================
+
+\subsection{Core Point}
+
+\begin{definition}[Core point]
+A point $y^0$ is a \emph{core point} if it lies strictly inside the feasible region
+of the master problem:
+$$y^0_a = \frac{p}{|H|} \quad \forall\, a \in H$$
+This satisfies $\sum_a y^0_a = p$ and $0 < y^0_a < 1$ for all $a$ (since $p < |H|$).
+\end{definition}
+
+\subsection{Two-Step Pareto Selection (Original Magnanti-Wong)}
+
+\begin{tcolorbox}[colback=lightblue,title=\textbf{Pareto Dual} $\overline{\text{DS}}^{ij}(\bar{y}, y^0)$]
+\textbf{Step 1.}  Solve $\text{DS}^{ij}(\bar{y})$ to get $z^*$.
+
+\medskip
+\textbf{Step 2.}  Among all dual-optimal solutions at $\bar{y}$, find the one
+that maximises the cut value at the core point $y^0$:
+\begin{alignat}{2}
+\max_{\nu}\quad & f(\nu, y^0) \\
+\text{s.t.}\quad & f(\nu, \bar{y}) = z^* \quad \text{(must stay optimal at $\bar{y}$)} \\
+                 & \nu_k - \nu_{k+1} \le C^{k+1}-C^k \\
+                 & \nu_k \ge 0
+\end{alignat}
+\end{tcolorbox}
+
+\textbf{Correctness:}  The resulting cut $\theta_{ij} \ge f(\nu^*, y)$ is:
+\begin{enumerate}
+  \item \textbf{Valid} — $\nu^*$ is dual-feasible, so the cut is a valid
+        lower bound on $f(y,i,j)$.
+  \item \textbf{Tight at $\bar{y}$} — $f(\nu^*, \bar{y}) = z^*$, so the cut is
+        as tight as any standard cut at the current node.
+  \item \textbf{Pareto-dominant} — no other valid cut from $\text{DS}^{ij}(\bar{y})$
+        is strictly tighter everywhere; this one is the best possible at $y^0$.
+\end{enumerate}
+
+\subsection{Cost: Two LP Solves Per OD Pair Per Node}
+
+The two-step approach requires solving \textbf{two separate LP subproblems}
+per OD pair at every integer node — doubling the subproblem overhead.
+
+% ============================================================
+\section{The $\varepsilon$-Perturbation Trick: One LP Only}
+% ============================================================
+
+\subsection{Combined Objective}
+
+Instead of the two-step approach, combine both objectives into one:
+
+$$\max_\nu \; f(\nu, \bar{y}) \;+\; \varepsilon \cdot f(\nu, y^0), \quad \varepsilon > 0 \text{ small}$$
+
+\subsection{Algebraic Simplification}
+
+Expand the combined objective:
+
+\begin{align}
+f(\nu,\bar{y}) + \varepsilon \cdot f(\nu,y^0)
+&= C^1 + \nu_1\!\left(1-\sum_{L^1}\bar{y}_a\right) - \sum_{k\ge2}\nu_k\sum_{L^k}\bar{y}_a \nonumber\\
+&\quad + \varepsilon\left[C^1 + \nu_1\!\left(1-\sum_{L^1}y^0_a\right)
+  - \sum_{k\ge2}\nu_k\sum_{L^k}y^0_a\right] \nonumber\\
+&= (1+\varepsilon)C^1
+  + \nu_1\!\underbrace{\left[(1-\sum_{L^1}\bar{y}_a)+\varepsilon(1-\sum_{L^1}y^0_a)\right]}_{
+      = (1+\varepsilon) - \sum_{L^1}(\bar{y}_a+\varepsilon y^0_a)}
+  - \sum_{k\ge2}\nu_k\underbrace{\left[\sum_{L^k}\bar{y}_a + \varepsilon\sum_{L^k}y^0_a\right]}_{
+      = \sum_{L^k}(\bar{y}_a+\varepsilon y^0_a)} \nonumber\\
+&= \underbrace{\varepsilon C^1}_{\text{constant}} + f\!\left(\nu,\;\underbrace{\bar{y}+\varepsilon y^0}_{\tilde{y}}\right)
+\end{align}
+
+\begin{tcolorbox}[colback=lightgreen,title=\textbf{Key Result}]
+\[
+\max_\nu\; f(\nu,\bar{y}) + \varepsilon\cdot f(\nu,y^0)
+\;\;=\;\;
+\varepsilon C^1 \;+\; \max_\nu\; f\!\left(\nu,\; \tilde{y}\right)
+\]
+where $\tilde{y}_a = \bar{y}_a + \varepsilon\, y^0_a$.
+
+\medskip
+\textbf{Solving the standard dual LP at the shifted point
+$\tilde{y} = \bar{y} + \varepsilon\, y^0$ in a single LP gives the
+Pareto-optimal cut.}
+\end{tcolorbox}
+
+\subsection{Why It Selects the Pareto-Optimal Solution}
+
+\begin{theorem}
+For $\varepsilon > 0$ small enough, any $\nu^*$ maximising $f(\nu, \tilde{y})$:
+\begin{enumerate}
+  \item Is primary-optimal: $f(\nu^*, \bar{y}) = z^*$
+  \item Among all primary-optimal solutions, maximises $f(\nu, y^0)$
+\end{enumerate}
+\end{theorem}
+
+\begin{proof}[Proof sketch]
+Let $\nu^A$ be primary-optimal ($f(\nu^A, \bar{y})=z^*$) and $\nu^B$ be
+suboptimal ($f(\nu^B, \bar{y}) = z^* - \delta$ for some $\delta > 0$).
+
+At the shifted point:
+\begin{align*}
+f(\nu^A, \tilde{y}) &= f(\nu^A,\bar{y}) + \varepsilon f(\nu^A,y^0)
+   = z^* + \varepsilon f(\nu^A,y^0)\\
+f(\nu^B, \tilde{y}) &= f(\nu^B,\bar{y}) + \varepsilon f(\nu^B,y^0)
+   = (z^*-\delta) + \varepsilon f(\nu^B,y^0)
+\end{align*}
+For $\nu^B$ to outscore $\nu^A$ we would need
+$\varepsilon(f(\nu^B,y^0)-f(\nu^A,y^0)) > \delta$,
+which is impossible if $\varepsilon < \delta / M$ where $M$ bounds the
+range of $f(\cdot, y^0)$.  So $\nu^*$ is primary-optimal.
+
+Among all primary-optimal $\nu$ (with the same $f(\nu,\bar{y})=z^*$),
+$\nu^*$ maximises $f(\nu,\tilde{y}) = z^* + \varepsilon f(\nu,y^0)$,
+hence maximises $f(\nu,y^0)$ — exactly the Pareto condition. \qed
+\end{proof}
+
+\subsection{Choosing $\varepsilon$}
+
+In practice $\varepsilon = 10^{-6}$ works reliably.  A more principled bound is:
+$$\varepsilon < \frac{\min_k (C^{k+1}-C^k)}{\max_{\nu\text{ feasible}} f(\nu,y^0) - \min_{\nu\text{ feasible}} f(\nu,y^0)}$$
+
+\textbf{After solving at $\tilde{y}$}, the violation check uses the
+\emph{true} cut value at $\bar{y}$ (not $\tilde{y}$):
+$$z^* = f(\nu^*, \bar{y}) = C^1 + \nu^*_1\!\left(1-\sum_{L^1}\bar{y}_a\right)
+  - \sum_{k\ge2}\nu^*_k\sum_{L^k}\bar{y}_a$$
+
+% ============================================================
+\section{Full Two-Phase Algorithm}
+% ============================================================
+
+\begin{algorithm}[H]
+\caption{Two-Phase Pareto Benders for $p$-Hub-Arc}
+\begin{algorithmic}[1]
+\State \textbf{Input:} $n,p,W,D$; core point $y^0_a = p/|H|$
+\State \textbf{Preprocess:} Build $H$, cost levels $C^k_{ij}$, level sets $L^k_{ij}$, $K_{ij}$
+
+\vspace{0.3em}
+\State \textbf{--- Phase 1: LP Relaxation ---}
+\State Initialise master LP: $y_a \in [0,1]$, $\sum y_a = p$, $\theta_{ij}\ge 0$
+\State Set heuristic upper bound $\widehat{y}$, $\widehat{UB}$
+\Repeat
+  \State Solve master LP $\to \bar{y}, \bar{\theta}$; update $LB_1 \leftarrow \text{obj}$
+  \State For each $(i,j)$: solve $\text{DS}^{ij}(\bar{y})$ (standard, no Pareto) $\to z^*, \nu^*$
+  \State Add violated cuts; update $\widehat{UB}$ from rounding heuristic
+\Until{no violated cuts (LP converged)}
+\State \textbf{Phase 1 output:} $y_1 \leftarrow \text{round}(\bar{y})$, warm-start for Phase 2
+
+\vspace{0.3em}
+\State \textbf{--- Phase 2: Branch-and-Benders-Cut ---}
+\State Build MIP master: $y_a \in \{0,1\}$, $\sum y_a=p$, $\theta_{ij}\ge 0$
+\State Set MIP start: $y_a \leftarrow y_1$
+\State Register \textbf{lazy callback} with Pareto separation:
+\begin{ALC@g}
+  \State At each integer node with solution $\bar{y}, \bar{\theta}$:
+  \State $\quad$ Compute $\tilde{y}_a = \bar{y}_a + \varepsilon\, y^0_a$
+  \State $\quad$ For each $(i,j)$: solve $\text{DS}^{ij}(\tilde{y})$ (single LP) $\to \nu^*$
+  \State $\quad$ Recompute $z^* = f(\nu^*, \bar{y})$
+  \State $\quad$ If $\bar{\theta}_{ij} < z^* - \text{tol}$: add lazy cut $\theta_{ij} \ge f(\nu^*, y)$
+\end{ALC@g}
+\State Run MIP solver until optimal
+\State \textbf{Return} $y^*$, objective $= \text{MIP obj} + \sum_{K_{ij}=1}C^1_{ij}$
+\end{algorithmic}
+\end{algorithm}
+
+% ============================================================
+\section{Comparison: Three Benders Strategies}
+% ============================================================
+
+\begin{center}
+\begin{tabular}{lccc}
+\toprule
+Property & Plain Benders & McDaniel \& Devine & \textbf{Pareto Benders} \\
+\midrule
+Phase 1 LP & \checkmark & \checkmark & \checkmark \\
+Cuts passed to Phase 2 & warm-start only & all Phase 1 cuts & warm-start only \\
+Subproblem at each node & standard dual & standard dual & dual at $\tilde{y}$ \\
+LPs per OD per node & 1 & 1 & \textbf{1} (after $\varepsilon$-trick) \\
+Cut quality & standard & standard & \textbf{Pareto-optimal} \\
+Fewer B\&B nodes & No & Yes (tighter formulation) & Yes (stronger cuts) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+% ============================================================
+\section{Implementation in Code}
+% ============================================================
+
+\subsection{Core Function: Single-LP Pareto Dual}
+
+The key function \texttt{\_solve\_dual\_subproblem\_pareto} in
+\texttt{pareto\_benders\_hub\_arc.py}:
+
+\begin{lstlisting}[caption={Single-LP Pareto dual subproblem ($\varepsilon$-perturbation)}]
+def _solve_dual_subproblem_pareto(i, j, y_bar, y_core, C, L, K, eps=1e-6):
+    Kij = K[(i, j)]
+    L1  = L[(i, j)][1]
+    C1  = C[(i, j)][0]
+
+    # Step 1: shift  y_eff = y_bar + eps * y_core
+    y_eff = {a: y_bar.get(a,0.) + eps*y_core.get(a,0.) for a in y_bar}
+
+    # Step 2: single LP at y_eff  (standard dual structure, new point)
+    m  = gp.Model(); m.Params.OutputFlag = 0
+    nu = m.addVars(range(1, Kij+1), lb=0.)
+
+    obj = C1 + nu[1]*(1. - sum(y_eff[a] for a in L1))
+    for k in range(2, Kij+1):
+        obj -= nu[k] * sum(y_eff.get(a,0.) for a in L[(i,j)][k])
+    m.setObjective(obj, GRB.MAXIMIZE)
+
+    for k in range(1, Kij):       # dual feasibility
+        m.addConstr(nu[k] - nu[k+1] <= C[(i,j)][k] - C[(i,j)][k-1])
+    m.optimize()
+
+    nu_sol = {k: nu[k].X for k in range(1, Kij+1)}
+
+    # Step 3: recompute z* at ORIGINAL y_bar (not y_eff)
+    z_star = C1 + nu_sol[1]*(1. - sum(y_bar.get(a,0.) for a in L1))
+    for k in range(2, Kij+1):
+        z_star -= nu_sol[k] * sum(y_bar.get(a,0.) for a in L[(i,j)][k])
+
+    return z_star, {"Ki": Kij, "nu": nu_sol, "C1": C1, ...}
+\end{lstlisting}
+
+\subsection{The Cut Addition (Lazy Callback)}
+
+\begin{lstlisting}[caption={Adding the Pareto cut as a lazy constraint}]
+# In ParetoBendersCutCallback.__call__:
+y_bar   = {a: model.cbGetSolution(y_vars[a]) for a in y_vars}
+theta_b = {(i,j): model.cbGetSolution(theta_vars[(i,j)]) for ...}
+
+cuts, _ = separation_pareto(y_bar, theta_b, y_core, C, L, K, od_pairs)
+
+for ((i,j), cut) in cuts:
+    nu = cut["nu"]
+    expr = cut["C1"]
+    expr += nu[1] * (1. - gp.quicksum(y_vars[a] for a in cut["L1"]))
+    for k in range(2, cut["Ki"]+1):
+        expr -= nu[k] * gp.quicksum(y_vars[a] for a in cut[f"L{k}"])
+    model.cbLazy(theta_vars[(i,j)] >= expr)   # theta_ij >= f(nu*, y)
+\end{lstlisting}
+
+\subsection{Core Point Definition}
+
+\begin{lstlisting}[caption={Core point: uniform interior of feasible region}]
+# p arcs must be selected out of |H| = n(n-1) candidates
+# Uniform share: each arc gets p/|H| < 1, and sum = p exactly
+y_core = {a: p / len(H) for a in H}
+\end{lstlisting}
+
+% ============================================================
+\section{Worked Small Example}
+% ============================================================
+
+Consider $n=3$, $p=2$, single OD pair $(0,1)$. Suppose the cost levels are:
+$$C^1 = 2,\quad C^2 = 5,\quad C^3 = 9, \qquad K=3$$
+with $L^1=\{(0,1),(1,0)\}$, $L^2=\{(0,2),(2,1)\}$, $L^3=\{(1,2),(2,0)\}$.
+
+At B\&B node with $\bar{y}_{(0,1)}=1, \bar{y}_{(1,0)}=1$, all others $=0$:
+$$\sum_{a\in L^1}\bar{y}_a = 2, \quad \sum_{a\in L^2}\bar{y}_a = 0, \quad \sum_{a\in L^3}\bar{y}_a = 0$$
+
+\paragraph{Standard dual at $\bar{y}$:}
+$$\max_\nu\; 2 + \nu_1(1-2) - \nu_2\cdot 0 - \nu_3 \cdot 0
+= 2 - \nu_1 \quad\Rightarrow\quad z^* = 2, \;\nu^* = (0, *, *)$$
+
+(All $\nu_1 = 0$ are optimal; this gives a trivially weak cut $\theta_{01}\ge 2$.)
+
+\paragraph{Core point:} $y^0_a = 2/6 = 1/3$ for all $a \in H$.
+
+\paragraph{Shifted point $\tilde{y}$:} $\tilde{y}_a = \bar{y}_a + 10^{-6}\cdot(1/3)$. For $a\in L^1$: $\tilde{y}_a = 1 + 3.33\times10^{-7}$; others: $3.33\times10^{-7}$.
+
+\paragraph{Dual at $\tilde{y}$ (single LP):}
+\begin{align*}
+\max_\nu\; &2 + \nu_1(1 - 2\tilde{y}_{L^1}) - \nu_2(2\tilde{y}_{L^2}) - \nu_3(2\tilde{y}_{L^3})\\
+=\; &2 + \nu_1(1 - 2 - \varepsilon') - \nu_2\,\varepsilon' - \nu_3\,\varepsilon'
+\approx 2 - \nu_1
+\end{align*}
+Still $\nu^*_1 = 0$, but now the objective has small positive coefficients for
+higher-level $\nu$ terms that select the dual solution maximising $f(\nu, y^0)$,
+yielding a stronger cut for future nodes where $L^2$ arcs might be opened.
+
+% ============================================================
+\section{Summary}
+% ============================================================
+
+\begin{tcolorbox}[colback=lightgreen,title=\textbf{Take-Away}]
+\begin{itemize}
+  \item Standard Benders picks an \emph{arbitrary} dual optimal solution
+        $\to$ potentially weak cuts.
+  \item Pareto (Magnanti-Wong) picks the \emph{best} dual optimal solution
+        at the core point $\to$ systematically stronger cuts, fewer B\&B nodes.
+  \item The $\varepsilon$-perturbation trick collapses the 2-LP procedure into
+        a \textbf{single LP} solve at $\tilde{y} = \bar{y} + \varepsilon y^0$.
+  \item In code: replace \texttt{y\_bar} with \texttt{y\_eff = y\_bar + eps*y\_core}
+        in the dual subproblem; recompute $z^*$ at original $\bar{y}$ after.
+\end{itemize}
+\end{tcolorbox}
+
+\vspace{1em}
+\noindent\textbf{References}
+\begin{itemize}
+  \item Magnanti, T.L.\ \& Wong, R.T.\ (1981). Accelerating Benders decomposition:
+        Algorithmic enhancement and model selection criteria. \emph{Operations Research}, 29(3), 464--484.
+  \item McDaniel, D.\ \& Devine, M.\ (1977). A modified Benders partitioning algorithm
+        for mixed integer programming. \emph{Management Science}, 24(3), 312--319.
+  \item Ramamoorthy, P., et al.\ (2024). Benders decomposition for the $p$-hub arc
+        location problem. \emph{European Journal of Operational Research}.
+\end{itemize}
+
+\end{document}

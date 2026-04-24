@@ -12,8 +12,10 @@ Run: python test_timing_comprehensive.py
 
 import sys
 import os
+import threading
 import numpy as np
 import time
+from contextlib import contextmanager
 from typing import List, Dict, Any, Optional, Tuple
 
 _this_dir = os.path.dirname(os.path.abspath(__file__))
@@ -21,6 +23,37 @@ sys.path.insert(0, _this_dir)
 
 from hub_arc_models import solve_hub_arc_F3, HubArcBenders
 from new_model_hub_arc import solve_benders_hub_arc, preprocess
+from md_benders_hub_arc import solve_md_benders_hub_arc
+from md_benders_hub_arc_pareto import solve_md_benders_hub_arc_pareto
+from new_model_hub_arc_pareto_phase12 import solve_benders_hub_arc_pareto_phase12
+
+
+@contextmanager
+def _long_task_heartbeat(label: str, interval_sec: float):
+    """Print a line every `interval_sec` so long Gurobi runs do not look hung."""
+    if interval_sec <= 0:
+        yield
+        return
+    stop = threading.Event()
+    t0 = time.time()
+
+    def _loop():
+        n_hb = 0
+        while not stop.wait(interval_sec):
+            n_hb += 1
+            elapsed = int(time.time() - t0)
+            print(
+                f"\n      [running] {label}  (heartbeat #{n_hb}, ~{elapsed}s elapsed)",
+                flush=True,
+            )
+
+    th = threading.Thread(target=_loop, daemon=True)
+    th.start()
+    try:
+        yield
+    finally:
+        stop.set()
+        th.join(timeout=1.0)
 
 
 def build_instance(n: int, p: int, seed: Optional[int] = None) -> Tuple[List, List]:
@@ -34,6 +67,16 @@ def build_instance(n: int, p: int, seed: Optional[int] = None) -> Tuple[List, Li
     return W.tolist(), D.tolist()
 
 
+def _all_objectives_close(objectives: List[Optional[float]], tol: float = 1e-4) -> bool:
+    """True if all non-None objectives agree within tol (or there is at most one)."""
+    finite = [o for o in objectives if o is not None]
+    if not finite:
+        return False
+    if len(finite) == 1:
+        return True
+    return max(finite) - min(finite) < tol
+
+
 def run_instance(
     n: int,
     p: int,
@@ -41,16 +84,72 @@ def run_instance(
     D: List,
     time_limit: Optional[float] = None,
     use_phase1: bool = True,
+    stage_progress: bool = False,
+    heartbeat_sec: float = 0.0,
+    skip_f3: bool = False,
+    include_md_and_phase12: bool = False,
 ) -> Dict[str, Any]:
     """
     Run F3, normal Benders (HubArcBenders), and new Benders on one instance.
-    Returns dict with objectives, times, status, and match.
+    Optionally also run McDaniel-Devine (MD), MD+Pareto, and new-model Pareto phase12.
+
+    If stage_progress is True, prints a short line before each solver (flush=True);
+    F3 at medium n can take many minutes with no other output.
+
+    If heartbeat_sec > 0 and stage_progress is True, prints periodic heartbeats
+    during long steps (F3 / Norm / New / extra solvers) so the process does not look stuck.
+
+    skip_f3 : if True, do not run the F3 MIP. Use for large n: F3 model build
+    in pure Python is huge (minutes+) before Gurobi TimeLimit even applies.
+    When skipped, "match" (without extras) compares Normal vs New Benders only.
+
+    include_md_and_phase12 : if True, after New Benders also run, in order,
+    solve_md_benders_hub_arc, solve_md_benders_hub_arc_pareto (pareto two_step),
+    and solve_benders_hub_arc_pareto_phase12. "match" then requires all
+    non-None objectives among the selected solvers to agree within 1e-4
+    (F3 included when not skip_f3; otherwise the five Benders methods).
     """
-    f3_res = solve_hub_arc_F3(n, p, W, D, gurobi_output=False)
+    hb = stage_progress and heartbeat_sec > 0
+    if skip_f3:
+        f3_res = {
+            "objective": None,
+            "time": None,
+            "status": "SKIPPED",
+        }
+        if stage_progress:
+            print(
+                "(F3 skipped) | ",
+                end="",
+                flush=True,
+            )
+    else:
+        if stage_progress:
+            print("(F3 …)", end=" ", flush=True)
+        if hb:
+            with _long_task_heartbeat("F3 direct MIP (OutputFlag=0, may be slow)", heartbeat_sec):
+                f3_res = solve_hub_arc_F3(
+                    n, p, W, D, gurobi_output=False, time_limit=time_limit
+                )
+        else:
+            f3_res = solve_hub_arc_F3(
+                n, p, W, D, gurobi_output=False, time_limit=time_limit
+            )
+        if stage_progress:
+            f3t_done = f3_res.get("time") or 0.0
+            print(f"done {f3t_done:.2f}s | ", end="", flush=True)
 
     # Normal Benders (HubArcBenders): no Phase 1, callback-only
+    if stage_progress:
+        print("(Norm Benders …)", end=" ", flush=True)
     b_norm = HubArcBenders(n=n, p=p, W=W, D=D, verbose=False)
-    norm_res = b_norm.solve(time_limit=time_limit)
+    if hb:
+        with _long_task_heartbeat("Normal Benders (MIP + callbacks)", heartbeat_sec):
+            norm_res = b_norm.solve(time_limit=time_limit)
+    else:
+        norm_res = b_norm.solve(time_limit=time_limit)
+    if stage_progress:
+        nt_done = norm_res.get("time") or 0.0
+        print(f"done {nt_done:.2f}s | ", end="", flush=True)
     # HubArcBenders returns master.ObjVal; add constant for OD pairs with K==1
     _, C, _, K, _, _, _ = preprocess(n, W, D)
     if norm_res["objective"] is not None:
@@ -58,22 +157,106 @@ def run_instance(
         norm_res = dict(norm_res, objective=norm_res["objective"] + add_const)
 
     # New Benders (Phase 1 + Phase 2)
-    new_res = solve_benders_hub_arc(
-        n, p, W, D, verbose=False, use_phase1=use_phase1, time_limit=time_limit
-    )
+    if stage_progress:
+        print("(New Benders …)", end=" ", flush=True)
+    if hb:
+        with _long_task_heartbeat("New Benders (Phase1 LP + Phase2 MIP)", heartbeat_sec):
+            new_res = solve_benders_hub_arc(
+                n, p, W, D, verbose=False, use_phase1=use_phase1, time_limit=time_limit
+            )
+    else:
+        new_res = solve_benders_hub_arc(
+            n, p, W, D, verbose=False, use_phase1=use_phase1, time_limit=time_limit
+        )
+    if stage_progress:
+        nnt_done = new_res.get("time") or 0.0
+        if include_md_and_phase12:
+            print(f"done {nnt_done:.2f}s | ", end="", flush=True)
+        else:
+            print(f"done {nnt_done:.2f}s", flush=True)
+
+    md_res: Optional[Dict[str, Any]] = None
+    mdp_res: Optional[Dict[str, Any]] = None
+    p12_res: Optional[Dict[str, Any]] = None
+    if include_md_and_phase12:
+        if stage_progress:
+            print("(MD Benders …)", end=" ", flush=True)
+        if hb:
+            with _long_task_heartbeat("MD Benders (McDaniel-Devine, standard cuts)", heartbeat_sec):
+                md_res = solve_md_benders_hub_arc(
+                    n, p, W, D, time_limit=time_limit, verbose=False, use_phase1=use_phase1
+                )
+        else:
+            md_res = solve_md_benders_hub_arc(
+                n, p, W, D, time_limit=time_limit, verbose=False, use_phase1=use_phase1
+            )
+        if stage_progress:
+            print(f"done {md_res.get('time') or 0.0:.2f}s | ", end="", flush=True)
+
+        if stage_progress:
+            print("(MD Pareto …)", end=" ", flush=True)
+        if hb:
+            with _long_task_heartbeat("MD Pareto Benders (two_step)", heartbeat_sec):
+                mdp_res = solve_md_benders_hub_arc_pareto(
+                    n, p, W, D, time_limit=time_limit, verbose=False, use_phase1=use_phase1
+                )
+        else:
+            mdp_res = solve_md_benders_hub_arc_pareto(
+                n, p, W, D, time_limit=time_limit, verbose=False, use_phase1=use_phase1
+            )
+        if stage_progress:
+            print(f"done {mdp_res.get('time') or 0.0:.2f}s | ", end="", flush=True)
+
+        if stage_progress:
+            print("(Pareto phase12 …)", end=" ", flush=True)
+        if hb:
+            with _long_task_heartbeat("New-model Pareto phase12 (two_step)", heartbeat_sec):
+                p12_res = solve_benders_hub_arc_pareto_phase12(
+                    n, p, W, D, time_limit=time_limit, verbose=False,
+                    use_phase1=use_phase1, pareto_method="two_step",
+                )
+        else:
+            p12_res = solve_benders_hub_arc_pareto_phase12(
+                n, p, W, D, time_limit=time_limit, verbose=False,
+                use_phase1=use_phase1, pareto_method="two_step",
+            )
+        if stage_progress:
+            print(f"done {p12_res.get('time') or 0.0:.2f}s", flush=True)
 
     ref = f3_res["objective"]
-    match_f3 = ref is not None
     diff_norm = diff_new = None
-    if ref is not None:
-        if norm_res["objective"] is not None:
-            diff_norm = abs(ref - norm_res["objective"])
-            match_f3 = match_f3 and diff_norm < 1e-4
-        if new_res["objective"] is not None:
-            diff_new = abs(ref - new_res["objective"])
-            match_f3 = match_f3 and diff_new < 1e-4
+    if include_md_and_phase12 and md_res is not None and mdp_res is not None and p12_res is not None:
+        to_compare: List[Optional[float]] = []
+        if not skip_f3:
+            to_compare.append(ref)
+        to_compare.extend(
+            [
+                norm_res["objective"],
+                new_res["objective"],
+                md_res.get("objective"),
+                mdp_res.get("objective"),
+                p12_res.get("objective"),
+            ]
+        )
+        match_f3 = _all_objectives_close(to_compare)
+    else:
+        if skip_f3:
+            match_f3 = (
+                norm_res["objective"] is not None
+                and new_res["objective"] is not None
+                and abs(norm_res["objective"] - new_res["objective"]) < 1e-4
+            )
+        else:
+            match_f3 = ref is not None
+            if ref is not None:
+                if norm_res["objective"] is not None:
+                    diff_norm = abs(ref - norm_res["objective"])
+                    match_f3 = match_f3 and diff_norm < 1e-4
+                if new_res["objective"] is not None:
+                    diff_new = abs(ref - new_res["objective"])
+                    match_f3 = match_f3 and diff_new < 1e-4
 
-    return {
+    out: Dict[str, Any] = {
         "n": n,
         "p": p,
         "f3_obj": ref,
@@ -89,6 +272,17 @@ def run_instance(
         "diff_norm": diff_norm,
         "diff_new": diff_new,
     }
+    if include_md_and_phase12 and md_res is not None and mdp_res is not None and p12_res is not None:
+        out["md_time"] = md_res.get("time")
+        out["md_obj"] = md_res.get("objective")
+        out["md_status"] = md_res.get("status")
+        out["mdp_time"] = mdp_res.get("time")
+        out["mdp_obj"] = mdp_res.get("objective")
+        out["mdp_status"] = mdp_res.get("status")
+        out["p12_time"] = p12_res.get("time")
+        out["p12_obj"] = p12_res.get("objective")
+        out["p12_status"] = p12_res.get("status")
+    return out
 
 
 def run_timing_suite(
@@ -97,10 +291,22 @@ def run_timing_suite(
     time_limit: Optional[float] = 300.0,
     use_phase1: bool = True,
     verbose: bool = True,
+    heartbeat_sec: float = 0.0,
+    skip_f3: bool = False,
+    include_md_and_phase12: bool = False,
 ) -> List[Dict[str, Any]]:
     """
     Run full timing suite: each (n, p) × each seed.
     Returns list of results with aggregated stats per (n, p).
+
+    heartbeat_sec : if > 0 and verbose, print periodic heartbeats during each
+    solver step (F3 can run a long time with no Gurobi log when OutputFlag=0).
+    Set to 0 to disable.
+
+    skip_f3 : if True, skip the F3 direct MIP (see run_instance).
+
+    include_md_and_phase12 : if True, also run MD, MD+Pareto, and Pareto phase12
+    after New Benders (see run_instance).
     """
     results = []
     idx = 0
@@ -123,29 +329,82 @@ def run_timing_suite(
                 W, D = build_instance(n, p, seed)
 
             try:
-                r = run_instance(n, p, W, D, time_limit=time_limit, use_phase1=use_phase1)
+                r = run_instance(
+                    n,
+                    p,
+                    W,
+                    D,
+                    time_limit=time_limit,
+                    use_phase1=use_phase1,
+                    stage_progress=verbose,
+                    heartbeat_sec=heartbeat_sec if verbose else 0.0,
+                    skip_f3=skip_f3,
+                    include_md_and_phase12=include_md_and_phase12,
+                )
                 r["seed"] = seed
                 r["fixed"] = fixed
                 results.append(r)
                 if verbose:
                     f3t, nt, nn = r["f3_time"], r["norm_time"], r["new_time"]
-                    times = [("F3", f3t), ("Norm", nt), ("New", nn)]
-                    fastest = min(times, key=lambda x: x[1] or float("inf"))
+                    times: List[Tuple[str, Any]] = [
+                        ("F3", f3t), ("Norm", nt), ("New", nn),
+                    ]
+                    if include_md_and_phase12:
+                        times.extend(
+                            [
+                                ("MD", r.get("md_time")),
+                                ("MDP", r.get("mdp_time")),
+                                ("P12", r.get("p12_time")),
+                            ]
+                        )
+                    valid_times = [
+                        (name, t) for name, t in times
+                        if t is not None and t >= 0
+                    ]
+                    fastest = min(valid_times, key=lambda x: x[1])[0] if valid_times else "-"
                     f3o, no, neo = r.get("f3_obj"), r.get("norm_obj"), r.get("new_obj")
                     f3o_s = f"{f3o:.4f}" if f3o is not None else "N/A"
                     no_s = f"{no:.4f}" if no is not None else "N/A"
                     neo_s = f"{neo:.4f}" if neo is not None else "N/A"
+                    f3s = f"{f3t:.3f}" if f3t is not None else "N/A"
                     match_str = "Match" if r.get("match") else "MISMATCH"
-                    print(f"F3={f3t:.3f}s, NormB={nt:.3f}s, NewB={nn:.3f}s (fastest: {fastest[0]})")
-                    print(f"      Obj: F3={f3o_s}  NormB={no_s}  NewB={neo_s}  |  {match_str}")
+                    if include_md_and_phase12:
+                        mdt, mdp_t, p12t = r.get("md_time"), r.get("mdp_time"), r.get("p12_time")
+                        mdt_s = f"{mdt:.3f}" if mdt is not None else "N/A"
+                        mdp_s = f"{mdp_t:.3f}" if mdp_t is not None else "N/A"
+                        p12_s = f"{p12t:.3f}" if p12t is not None else "N/A"
+                        print(
+                            f"F3={f3s}s, NormB={nt:.3f}s, NewB={nn:.3f}s, "
+                            f"MD={mdt_s}s, MDP={mdp_s}s, P12={p12_s}s (fastest: {fastest})"
+                        )
+                        mdo = r.get("md_obj")
+                        mdpo = r.get("mdp_obj")
+                        p12o = r.get("p12_obj")
+                        mdo_s = f"{mdo:.4f}" if mdo is not None else "N/A"
+                        mdpo_s = f"{mdpo:.4f}" if mdpo is not None else "N/A"
+                        p12o_s = f"{p12o:.4f}" if p12o is not None else "N/A"
+                        print(
+                            f"      Obj: F3={f3o_s}  NormB={no_s}  NewB={neo_s}  "
+                            f"MD={mdo_s}  MDP={mdpo_s}  P12={p12o_s}  |  {match_str}"
+                        )
+                    else:
+                        print(
+                            f"F3={f3s}s, NormB={nt:.3f}s, NewB={nn:.3f}s (fastest: {fastest})"
+                        )
+                        print(
+                            f"      Obj: F3={f3o_s}  NormB={no_s}  NewB={neo_s}  |  {match_str}"
+                        )
             except Exception as e:
                 if verbose:
                     print(f"ERROR: {e}")
-                results.append({
+                err_row: Dict[str, Any] = {
                     "n": n, "p": p, "seed": seed, "fixed": fixed,
                     "f3_time": None, "norm_time": None, "new_time": None,
                     "match": False, "error": str(e),
-                })
+                }
+                if include_md_and_phase12:
+                    err_row["md_time"] = err_row["mdp_time"] = err_row["p12_time"] = None
+                results.append(err_row)
 
     return results
 
@@ -165,6 +424,9 @@ def aggregate_by_instance(results: List[Dict]) -> Dict[Tuple[int, int], Dict]:
         f3_t = [x["f3_time"] for x in rows if x.get("f3_time") is not None]
         norm_t = [x["norm_time"] for x in rows if x.get("norm_time") is not None]
         new_t = [x["new_time"] for x in rows if x.get("new_time") is not None]
+        md_t = [x["md_time"] for x in rows if x.get("md_time") is not None]
+        mdp_t = [x["mdp_time"] for x in rows if x.get("mdp_time") is not None]
+        p12_t = [x["p12_time"] for x in rows if x.get("p12_time") is not None]
         matches = sum(1 for x in rows if x.get("match"))
         agg[(n, p)] = {
             "n": n,
@@ -173,6 +435,9 @@ def aggregate_by_instance(results: List[Dict]) -> Dict[Tuple[int, int], Dict]:
             "f3_mean": np.mean(f3_t) if f3_t else None,
             "norm_mean": np.mean(norm_t) if norm_t else None,
             "new_mean": np.mean(new_t) if new_t else None,
+            "md_mean": np.mean(md_t) if md_t else None,
+            "mdp_mean": np.mean(mdp_t) if mdp_t else None,
+            "p12_mean": np.mean(p12_t) if p12_t else None,
             "match_count": matches,
             "match_rate": matches / len(rows) if rows else 0,
         }
@@ -181,6 +446,10 @@ def aggregate_by_instance(results: List[Dict]) -> Dict[Tuple[int, int], Dict]:
 
 def print_timing_table(results: List[Dict], agg: Dict):
     """Print formatted timing comparison table."""
+    has_extras = any(
+        "error" not in r and r.get("md_time") is not None for r in results
+    ) or any(a.get("md_mean") is not None for a in agg.values())
+
     print("\n" + "=" * 115)
     print("TIMING COMPARISON TABLE (F3 vs Normal Benders vs New Benders)")
     print("=" * 115)
@@ -202,10 +471,40 @@ def print_timing_table(results: List[Dict], agg: Dict):
         new_str = f"{newm:.4f}" if newm is not None else "   N/A   "
 
         times = [("F3", fm), ("NormB", nm), ("NewB", newm)]
+        if has_extras:
+            times.extend(
+                [
+                    ("MD", a.get("md_mean")),
+                    ("MDP", a.get("mdp_mean")),
+                    ("P12", a.get("p12_mean")),
+                ]
+            )
         valid = [(name, t) for name, t in times if t is not None and t >= 0]
         fastest = min(valid, key=lambda x: x[1])[0] if valid else "-"
         match_str = f"{a['match_count']}/{count}"
         print(f"{n:>4} | {p:>3} | {count:>6} | {f_str:>10} | {n_str:>16} | {new_str:>16} | {fastest:>12} | {match_str}")
+
+    if has_extras:
+        print("\n" + "=" * 115)
+        print("MEAN TIMES — MD, MD Pareto, Pareto phase12 (only when those solvers were run)")
+        print("=" * 115)
+        h2 = f"{'n':>4} | {'p':>3} | {'#runs':>6} | {'MD (s)':>10} | {'MD Pareto (s)':>14} | {'P12 (s)':>10} | {'Fastest3':>12}"
+        print(h2)
+        print("-" * 115)
+        for key in sorted(agg.keys(), key=lambda k: (k[0], k[1])):
+            a = agg[key]
+            n, p = a["n"], a["p"]
+            count = a["count"]
+            mdm = a.get("md_mean")
+            mdp = a.get("mdp_mean")
+            p12m = a.get("p12_mean")
+            ms = f"{mdm:.4f}" if mdm is not None else "   N/A   "
+            mps = f"{mdp:.4f}" if mdp is not None else "   N/A   "
+            pss = f"{p12m:.4f}" if p12m is not None else "   N/A   "
+            t3 = [("MD", mdm), ("MDP", mdp), ("P12", p12m)]
+            v3 = [(n2, t) for n2, t in t3 if t is not None and t >= 0]
+            f3 = min(v3, key=lambda x: x[1])[0] if v3 else "-"
+            print(f"{n:>4} | {p:>3} | {count:>6} | {ms:>10} | {mps:>14} | {pss:>10} | {f3:>12}")
 
 
 def print_detailed_results(results: List[Dict]):
@@ -229,6 +528,19 @@ def print_detailed_results(results: List[Dict]):
         print(f"  [{i+1}] n={r['n']}, p={r['p']}, seed={r.get('seed')}: "
               f"F3={f3s}s, NormB={ns}s, NewB={nns}s")
         print(f"       Obj: F3={f3o_s}  NormB={no_s}  NewB={neo_s}  |  {status}")
+        if "md_time" in r and "error" not in r:
+            mdt, mdp_t, p12t = r.get("md_time"), r.get("mdp_time"), r.get("p12_time")
+            mds = f"{mdt:.4f}" if mdt is not None else "N/A"
+            mdps = f"{mdp_t:.4f}" if mdp_t is not None else "N/A"
+            p12s = f"{p12t:.4f}" if p12t is not None else "N/A"
+            mdo, mdpo, p12o = r.get("md_obj"), r.get("mdp_obj"), r.get("p12_obj")
+            mdos = f"{mdo:.4f}" if mdo is not None else "N/A"
+            mdpos = f"{mdpo:.4f}" if mdpo is not None else "N/A"
+            p12os = f"{p12o:.4f}" if p12o is not None else "N/A"
+            print(f"       MD={mds}s, MDP={mdps}s, P12={p12s}s")
+            print(
+                f"       Obj: MD={mdos}  MDP={mdpos}  P12={p12os}  |  {status}"
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -366,6 +678,73 @@ def test_aggregate_by_instance_structure():
     a = agg[(4, 2)]
     assert "count" in a and "f3_mean" in a and "match_count" in a
     assert a["count"] == 1
+
+
+def _fmt_t(x: Optional[float]) -> str:
+    return f"{x:.4f}" if x is not None else "N/A"
+
+
+def test_run_instance_n10_md_and_phase12_smoke():
+    """
+    Small instance (n=10): run full chain including MD, MD Pareto, and Pareto phase12.
+    Checks the extra keys exist and all objectives agree (match) when solvers finish.
+    Prints time (s) and objective per solver (use: pytest -s to see output).
+    """
+    n, p, seed = 10, 4, 123
+    W, D = build_instance(n, p, seed)
+    r = run_instance(
+        n,
+        p,
+        W,
+        D,
+        time_limit=180.0,
+        include_md_and_phase12=True,
+    )
+    for k in (
+        "md_time",
+        "md_obj",
+        "md_status",
+        "mdp_time",
+        "mdp_obj",
+        "mdp_status",
+        "p12_time",
+        "p12_obj",
+        "p12_status",
+    ):
+        assert k in r, f"missing key {k}"
+    assert r["f3_obj"] is not None
+    assert r["norm_obj"] is not None
+    assert r["new_obj"] is not None
+    assert r["md_obj"] is not None
+    assert r["mdp_obj"] is not None
+    assert r["p12_obj"] is not None
+
+    # Echo results (time in seconds, objective) — visible with: pytest -s ... 
+    print(
+        f"\n=== test_run_instance_n10_md_and_phase12_smoke n={n} p={p} seed={seed} ===\n"
+        f"  {'Solver':<14}  {'time (s)':>12}  {'objective':>16}  status\n"
+        f"  {'F3':<14}  {_fmt_t(r.get('f3_time')):>12}  "
+        f"{r.get('f3_obj')!r:>16}  {r.get('f3_status')!r}\n"
+        f"  {'Norm Benders':<14}  {_fmt_t(r.get('norm_time')):>12}  "
+        f"{r.get('norm_obj')!r:>16}  {r.get('norm_status')!r}\n"
+        f"  {'New Benders':<14}  {_fmt_t(r.get('new_time')):>12}  "
+        f"{r.get('new_obj')!r:>16}  {r.get('new_status')!r}\n"
+        f"  {'MD Benders':<14}  {_fmt_t(r.get('md_time')):>12}  "
+        f"{r.get('md_obj')!r:>16}  {r.get('md_status')!r}\n"
+        f"  {'MD Pareto':<14}  {_fmt_t(r.get('mdp_time')):>12}  "
+        f"{r.get('mdp_obj')!r:>16}  {r.get('mdp_status')!r}\n"
+        f"  {'Pareto P12':<14}  {_fmt_t(r.get('p12_time')):>12}  "
+        f"{r.get('p12_obj')!r:>16}  {r.get('p12_status')!r}\n"
+        f"  match (all objs within 1e-4): {r.get('match')!r}\n"
+        f"==============================================\n",
+        flush=True,
+    )
+
+    assert r["match"], (
+        f"n={n} p={p} seed={seed} objectives should agree: "
+        f"f3={r['f3_obj']} norm={r['norm_obj']} new={r['new_obj']} "
+        f"md={r['md_obj']} mdp={r['mdp_obj']} p12={r['p12_obj']}"
+    )
 
 
 # ---------------------------------------------------------------------------
