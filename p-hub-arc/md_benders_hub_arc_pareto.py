@@ -304,7 +304,15 @@ def solve_md_benders_hub_arc_pareto(
     mip.optimize(cb)
 
     elapsed = time.time() - t_start
-    if mip.status == GRB.OPTIMAL:
+    has_sol = mip.SolCount > 0
+    diag = {
+        "has_incumbent": has_sol,
+        "incumbent_objective": (mip.ObjVal if has_sol else None),
+        "obj_bound": (mip.ObjBound if has_sol else None),
+        "mip_gap": (mip.MIPGap if has_sol else None),
+    }
+
+    if mip.status in (GRB.OPTIMAL, GRB.TIME_LIMIT) and has_sol:
         y_sol = {a: y_vars[a].X for a in H}
         selected = [(u, v) for (u, v) in H if y_sol[(u, v)] > 0.5]
         obj = mip.ObjVal + sum(C[(i, j)][0] for (i, j) in K if i != j and K[(i, j)] == 1)
@@ -312,9 +320,10 @@ def solve_md_benders_hub_arc_pareto(
             "objective": obj,
             "selected_arcs": selected,
             "time": elapsed,
-            "status": "OPTIMAL",
+            "status": ("OPTIMAL" if mip.status == GRB.OPTIMAL else "TIME_LIMIT"),
             "phase1_cuts": len(accumulated_cuts),
             "pareto_method": pareto_method,
+            **diag,
         }
 
     return {
@@ -324,5 +333,6 @@ def solve_md_benders_hub_arc_pareto(
         "status": "FAILED",
         "phase1_cuts": len(accumulated_cuts),
         "pareto_method": pareto_method,
+        **diag,
     }
 

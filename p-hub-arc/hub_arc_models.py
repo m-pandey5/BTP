@@ -3,6 +3,15 @@ from gurobipy import GRB
 import time
 from typing import List, Tuple, Dict, Any
 
+def _mip_diagnostics(model: gp.Model) -> Dict[str, Any]:
+    has_sol = getattr(model, "SolCount", 0) > 0
+    return {
+        "has_incumbent": has_sol,
+        "incumbent_objective": (model.ObjVal if has_sol else None),
+        "obj_bound": getattr(model, "ObjBound", None),
+        "mip_gap": (getattr(model, "MIPGap", None) if has_sol else None),
+    }
+
 
 # ======================================================================
 #  F3 CANONICAL FORMULATION (DIRECT MIP)
@@ -141,6 +150,7 @@ def solve_hub_arc_F3(
     start = time.time()
     model.optimize()
     elapsed = time.time() - start
+    diag = _mip_diagnostics(model)
 
     if model.status == GRB.OPTIMAL:
         selected_arcs = [(u, v) for (u, v) in H if y[(u, v)].X > 0.5]
@@ -152,15 +162,17 @@ def solve_hub_arc_F3(
             "time": elapsed,
             "status": "OPTIMAL",
             "model": model,
+            **diag,
         }
     else:
         return {
-            "objective": None,
+            "objective": diag["incumbent_objective"],
             "selected_arcs": None,
             "z_values": None,
             "time": elapsed,
             "status": model.status,
             "model": model,
+            **diag,
         }
 
 
@@ -387,10 +399,11 @@ class HubArcBenders:
         elapsed = time.time() - start
 
         status = master.status
-        if status == GRB.OPTIMAL:
+        diag = _mip_diagnostics(master)
+        if status in (GRB.OPTIMAL, GRB.TIME_LIMIT) and diag["has_incumbent"]:
             y_sol = [(u, v) for (u, v) in self.H
                      if self.master_y_vars[(u, v)].X > 0.5]
-            obj_val = master.ObjVal
+            obj_val = diag["incumbent_objective"]
         else:
             y_sol = None
             obj_val = None
@@ -401,6 +414,7 @@ class HubArcBenders:
             "selected_arcs": y_sol,
             "time": elapsed,
             "model": master,
+            **diag,
         }
 
 

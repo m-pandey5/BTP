@@ -1,0 +1,2 @@
+n,p,seed,f3_time,f3_obj,f3_status,norm_time,norm_obj,norm_status,new_time,new_obj,new_status,md_time,md_obj,md_status,mdp_time,mdp_obj,mdp_status,p12_time,p12_obj,p12_status,match
+30,6,42,,,SKIPPED,599.1618189811707,30796.26517613701,2,600.0056807994843,,FAILED,,,,,,,,,,False

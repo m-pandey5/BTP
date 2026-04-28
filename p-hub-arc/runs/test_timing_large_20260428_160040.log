@@ -1,0 +1,40 @@
+
+===============================================================================================
+LARGE-INSTANCE BATCH: F3, Norm, New, then MD, MD Pareto, P12 (same W,D; per-solve time limit; wall time is sum of solvers)
+===============================================================================================
+
+Instance specs: 13 configurations (first: n=30 sanity, then n=60..200)
+Seeds per config: [42, 43, 44] -> 39 total runs
+Time limit per solve: 600.0s  (each solver call; not a shared cap)
+Run log: /Users/muskan/BTP/p-hub-arc/runs/test_timing_large_20260428_160040.log
+Live CSV: /Users/muskan/BTP/p-hub-arc/runs/large_instance_results_live_20260428_160040.csv
+Progress: /Users/muskan/BTP/p-hub-arc/runs/large_instance_progress_20260428_160040.txt
+
+Running suite...
+------------------------------------------------------------
+  [1] n=30, p=6, seed=42 ... (F3 …) Set parameter Username
+Set parameter LicenseID to value 2775876
+Academic license - for non-commercial use only - expires 2027-02-05
+
+      [running] F3 direct MIP (OutputFlag=0, may be slow)  (heartbeat #1, ~20s elapsed)
+
+      [running] F3 direct MIP (OutputFlag=0, may be slow)  (heartbeat #2, ~40s elapsed)
+
+      [running] F3 direct MIP (OutputFlag=0, may be slow)  (heartbeat #3, ~60s elapsed)
+
+      [running] F3 direct MIP (OutputFlag=0, may be slow)  (heartbeat #4, ~80s elapsed)
+
+      [running] F3 direct MIP (OutputFlag=0, may be slow)  (heartbeat #5, ~100s elapsed)
+
+      [running] F3 direct MIP (OutputFlag=0, may be slow)  (heartbeat #6, ~120s elapsed)
+
+      [running] F3 direct MIP (OutputFlag=0, may be slow)  (heartbeat #7, ~140s elapsed)
+
+      [running] F3 direct MIP (OutputFlag=0, may be slow)  (heartbeat #8, ~160s elapsed)
+
+      [running] F3 direct MIP (OutputFlag=0, may be slow)  (heartbeat #9, ~180s elapsed)
+
+      [running] F3 direct MIP (OutputFlag=0, may be slow)  (heartbeat #10, ~200s elapsed)
+
+      [running] F3 direct MIP (OutputFlag=0, may be slow)  (heartbeat #11, ~220s elapsed)
+done 207.64s | (Norm Benders …) 

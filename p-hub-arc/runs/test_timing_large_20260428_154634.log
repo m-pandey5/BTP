@@ -1,0 +1,168 @@
+
+===============================================================================================
+LARGE-INSTANCE BATCH: Norm + New only (F3 and extras skipped)
+===============================================================================================
+
+Instance specs: 13 configurations (first: n=30 sanity, then n=60..200)
+Seeds per config: [42, 43, 44] -> 39 total runs
+Time limit per solve: 600.0s  (each solver call; not a shared cap)
+Run log: /Users/muskan/BTP/p-hub-arc/runs/test_timing_large_20260428_154634.log
+Live CSV: /Users/muskan/BTP/p-hub-arc/runs/large_instance_results_live_20260428_154634.csv
+Progress: /Users/muskan/BTP/p-hub-arc/runs/large_instance_progress_20260428_154634.txt
+F3: skipped (unset LARGE_BENCH_SKIP_F3 to run F3)
+MD / MD Pareto / P12: skipped (unset LARGE_BENCH_NO_EXTRA to run all six solvers)
+DEBUG: LARGE_BENCH_MAX_RUNS active -> limiting to first 1 runs
+
+Running suite...
+------------------------------------------------------------
+  [1] n=30, p=6, seed=42 ... (F3 skipped) | (Norm Benders …) Set parameter Username
+Set parameter LicenseID to value 2775876
+Academic license - for non-commercial use only - expires 2027-02-05
+
+      [running] Normal Benders (MIP + callbacks)  (heartbeat #1, ~20s elapsed)
+
+      [running] Normal Benders (MIP + callbacks)  (heartbeat #2, ~40s elapsed)
+
+      [running] Normal Benders (MIP + callbacks)  (heartbeat #3, ~60s elapsed)
+
+      [running] Normal Benders (MIP + callbacks)  (heartbeat #4, ~80s elapsed)
+
+      [running] Normal Benders (MIP + callbacks)  (heartbeat #5, ~100s elapsed)
+
+      [running] Normal Benders (MIP + callbacks)  (heartbeat #6, ~120s elapsed)
+
+      [running] Normal Benders (MIP + callbacks)  (heartbeat #7, ~140s elapsed)
+
+      [running] Normal Benders (MIP + callbacks)  (heartbeat #8, ~160s elapsed)
+
+      [running] Normal Benders (MIP + callbacks)  (heartbeat #9, ~180s elapsed)
+
+      [running] Normal Benders (MIP + callbacks)  (heartbeat #10, ~200s elapsed)
+
+      [running] Normal Benders (MIP + callbacks)  (heartbeat #11, ~220s elapsed)
+
+      [running] Normal Benders (MIP + callbacks)  (heartbeat #12, ~240s elapsed)
+
+      [running] Normal Benders (MIP + callbacks)  (heartbeat #13, ~260s elapsed)
+
+      [running] Normal Benders (MIP + callbacks)  (heartbeat #14, ~280s elapsed)
+
+      [running] Normal Benders (MIP + callbacks)  (heartbeat #15, ~300s elapsed)
+
+      [running] Normal Benders (MIP + callbacks)  (heartbeat #16, ~320s elapsed)
+
+      [running] Normal Benders (MIP + callbacks)  (heartbeat #17, ~340s elapsed)
+
+      [running] Normal Benders (MIP + callbacks)  (heartbeat #18, ~360s elapsed)
+
+      [running] Normal Benders (MIP + callbacks)  (heartbeat #19, ~380s elapsed)
+
+      [running] Normal Benders (MIP + callbacks)  (heartbeat #20, ~400s elapsed)
+
+      [running] Normal Benders (MIP + callbacks)  (heartbeat #21, ~420s elapsed)
+
+      [running] Normal Benders (MIP + callbacks)  (heartbeat #22, ~440s elapsed)
+
+      [running] Normal Benders (MIP + callbacks)  (heartbeat #23, ~460s elapsed)
+
+      [running] Normal Benders (MIP + callbacks)  (heartbeat #24, ~480s elapsed)
+
+      [running] Normal Benders (MIP + callbacks)  (heartbeat #25, ~500s elapsed)
+
+      [running] Normal Benders (MIP + callbacks)  (heartbeat #26, ~520s elapsed)
+
+      [running] Normal Benders (MIP + callbacks)  (heartbeat #27, ~540s elapsed)
+
+      [running] Normal Benders (MIP + callbacks)  (heartbeat #28, ~560s elapsed)
+
+      [running] Normal Benders (MIP + callbacks)  (heartbeat #29, ~580s elapsed)
+done 599.16s | (New Benders …) 
+      [running] New Benders (Phase1 LP + Phase2 MIP)  (heartbeat #1, ~20s elapsed)
+
+      [running] New Benders (Phase1 LP + Phase2 MIP)  (heartbeat #2, ~40s elapsed)
+
+      [running] New Benders (Phase1 LP + Phase2 MIP)  (heartbeat #3, ~60s elapsed)
+
+      [running] New Benders (Phase1 LP + Phase2 MIP)  (heartbeat #4, ~80s elapsed)
+
+      [running] New Benders (Phase1 LP + Phase2 MIP)  (heartbeat #5, ~100s elapsed)
+
+      [running] New Benders (Phase1 LP + Phase2 MIP)  (heartbeat #6, ~120s elapsed)
+
+      [running] New Benders (Phase1 LP + Phase2 MIP)  (heartbeat #7, ~140s elapsed)
+
+      [running] New Benders (Phase1 LP + Phase2 MIP)  (heartbeat #8, ~160s elapsed)
+
+      [running] New Benders (Phase1 LP + Phase2 MIP)  (heartbeat #9, ~180s elapsed)
+
+      [running] New Benders (Phase1 LP + Phase2 MIP)  (heartbeat #10, ~200s elapsed)
+
+      [running] New Benders (Phase1 LP + Phase2 MIP)  (heartbeat #11, ~220s elapsed)
+
+      [running] New Benders (Phase1 LP + Phase2 MIP)  (heartbeat #12, ~240s elapsed)
+
+      [running] New Benders (Phase1 LP + Phase2 MIP)  (heartbeat #13, ~260s elapsed)
+
+      [running] New Benders (Phase1 LP + Phase2 MIP)  (heartbeat #14, ~280s elapsed)
+
+      [running] New Benders (Phase1 LP + Phase2 MIP)  (heartbeat #15, ~300s elapsed)
+
+      [running] New Benders (Phase1 LP + Phase2 MIP)  (heartbeat #16, ~320s elapsed)
+
+      [running] New Benders (Phase1 LP + Phase2 MIP)  (heartbeat #17, ~340s elapsed)
+
+      [running] New Benders (Phase1 LP + Phase2 MIP)  (heartbeat #18, ~360s elapsed)
+
+      [running] New Benders (Phase1 LP + Phase2 MIP)  (heartbeat #19, ~380s elapsed)
+
+      [running] New Benders (Phase1 LP + Phase2 MIP)  (heartbeat #20, ~400s elapsed)
+
+      [running] New Benders (Phase1 LP + Phase2 MIP)  (heartbeat #21, ~420s elapsed)
+
+      [running] New Benders (Phase1 LP + Phase2 MIP)  (heartbeat #22, ~440s elapsed)
+
+      [running] New Benders (Phase1 LP + Phase2 MIP)  (heartbeat #23, ~460s elapsed)
+
+      [running] New Benders (Phase1 LP + Phase2 MIP)  (heartbeat #24, ~480s elapsed)
+
+      [running] New Benders (Phase1 LP + Phase2 MIP)  (heartbeat #25, ~500s elapsed)
+
+      [running] New Benders (Phase1 LP + Phase2 MIP)  (heartbeat #26, ~520s elapsed)
+
+      [running] New Benders (Phase1 LP + Phase2 MIP)  (heartbeat #27, ~540s elapsed)
+
+      [running] New Benders (Phase1 LP + Phase2 MIP)  (heartbeat #28, ~560s elapsed)
+
+      [running] New Benders (Phase1 LP + Phase2 MIP)  (heartbeat #29, ~580s elapsed)
+done 600.01s
+F3=N/As, NormB=599.162s, NewB=600.006s (fastest: NormB)
+      Obj: F3=N/A  NormB=30796.2652  NewB=N/A  |  MISMATCH
+
+Results saved to: /Users/muskan/BTP/p-hub-arc/runs/large_instance_results_live_20260428_154634.csv
+
+Stopping early due to LARGE_BENCH_MAX_RUNS=1.
+
+===================================================================================================================
+TIMING COMPARISON TABLE (F3 vs Normal Benders vs New Benders)
+===================================================================================================================
+   n |   p |  #runs |     F3 (s) | Norm Benders (s) |  New Benders (s) |      Fastest | Match
+-------------------------------------------------------------------------------------------------------------------
+  30 |   6 |      1 |     N/A    |         599.1618 |         600.0057 |        NormB | 0/1
+
+===================================================================================================================
+DETAILED PER-RUN RESULTS (times, objectives, match)
+===================================================================================================================
+  [1] n=30, p=6, seed=42: F3=N/As, NormB=599.1618s, NewB=600.0057s
+       Obj: F3=N/A  NormB=30796.2652  NewB=N/A  |  MISMATCH
+
+===============================================================================================
+SUMMARY
+===============================================================================================
+Total runs:             1
+Objectives match:       0/1
+Normal Benders fastest: 1 runs
+New Benders fastest:    0 runs
+
+Results saved to: /Users/muskan/BTP/p-hub-arc/large_instance_results.csv
+
+WARNING: Some objectives did not match.

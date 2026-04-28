@@ -280,14 +280,34 @@ def solve_benders_hub_arc_pareto_phase12(
     model.optimize(callback)
 
     elapsed = time.time() - start_time
-    if model.status == GRB.OPTIMAL:
+    has_sol = model.SolCount > 0
+    diag = {
+        "has_incumbent": has_sol,
+        "incumbent_objective": (model.ObjVal if has_sol else None),
+        "obj_bound": (model.ObjBound if has_sol else None),
+        "mip_gap": (model.MIPGap if has_sol else None),
+    }
+
+    if model.status in (GRB.OPTIMAL, GRB.TIME_LIMIT) and has_sol:
         y_sol = {a: y_vars[a].X for a in H}
         selected = [(u, v) for (u, v) in H if y_sol[(u, v)] > 0.5]
         obj = model.ObjVal
         for (i, j) in K:
             if i != j and K[(i, j)] == 1:
                 obj += C[(i, j)][0]
-        return {"objective": obj, "selected_arcs": selected, "time": elapsed, "status": "OPTIMAL"}
+        return {
+            "objective": obj,
+            "selected_arcs": selected,
+            "time": elapsed,
+            "status": ("OPTIMAL" if model.status == GRB.OPTIMAL else "TIME_LIMIT"),
+            **diag,
+        }
 
-    return {"objective": None, "selected_arcs": None, "time": elapsed, "status": "FAILED"}
+    return {
+        "objective": None,
+        "selected_arcs": None,
+        "time": elapsed,
+        "status": "FAILED",
+        **diag,
+    }
 

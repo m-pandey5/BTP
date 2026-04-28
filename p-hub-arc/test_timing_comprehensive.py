@@ -77,6 +77,10 @@ def _all_objectives_close(objectives: List[Optional[float]], tol: float = 1e-4) 
     return max(finite) - min(finite) < tol
 
 
+def _fmt_gap(v: Optional[float]) -> str:
+    return f"{v:.6f}" if v is not None else "N/A"
+
+
 def run_instance(
     n: int,
     p: int,
@@ -88,6 +92,7 @@ def run_instance(
     heartbeat_sec: float = 0.0,
     skip_f3: bool = False,
     include_md_and_phase12: bool = False,
+    gurobi_logs: bool = False,
 ) -> Dict[str, Any]:
     """
     Run F3, normal Benders (HubArcBenders), and new Benders on one instance.
@@ -126,13 +131,18 @@ def run_instance(
         if stage_progress:
             print("(F3 …)", end=" ", flush=True)
         if hb:
-            with _long_task_heartbeat("F3 direct MIP (OutputFlag=0, may be slow)", heartbeat_sec):
+            hb_label = (
+                "F3 direct MIP (Gurobi log ON)"
+                if gurobi_logs
+                else "F3 direct MIP (OutputFlag=0, may be slow)"
+            )
+            with _long_task_heartbeat(hb_label, heartbeat_sec):
                 f3_res = solve_hub_arc_F3(
-                    n, p, W, D, gurobi_output=False, time_limit=time_limit
+                    n, p, W, D, gurobi_output=gurobi_logs, time_limit=time_limit
                 )
         else:
             f3_res = solve_hub_arc_F3(
-                n, p, W, D, gurobi_output=False, time_limit=time_limit
+                n, p, W, D, gurobi_output=gurobi_logs, time_limit=time_limit
             )
         if stage_progress:
             f3t_done = f3_res.get("time") or 0.0
@@ -141,7 +151,7 @@ def run_instance(
     # Normal Benders (HubArcBenders): no Phase 1, callback-only
     if stage_progress:
         print("(Norm Benders …)", end=" ", flush=True)
-    b_norm = HubArcBenders(n=n, p=p, W=W, D=D, verbose=False)
+    b_norm = HubArcBenders(n=n, p=p, W=W, D=D, verbose=gurobi_logs)
     if hb:
         with _long_task_heartbeat("Normal Benders (MIP + callbacks)", heartbeat_sec):
             norm_res = b_norm.solve(time_limit=time_limit)
@@ -162,11 +172,11 @@ def run_instance(
     if hb:
         with _long_task_heartbeat("New Benders (Phase1 LP + Phase2 MIP)", heartbeat_sec):
             new_res = solve_benders_hub_arc(
-                n, p, W, D, verbose=False, use_phase1=use_phase1, time_limit=time_limit
+                n, p, W, D, verbose=gurobi_logs, use_phase1=use_phase1, time_limit=time_limit
             )
     else:
         new_res = solve_benders_hub_arc(
-            n, p, W, D, verbose=False, use_phase1=use_phase1, time_limit=time_limit
+            n, p, W, D, verbose=gurobi_logs, use_phase1=use_phase1, time_limit=time_limit
         )
     if stage_progress:
         nnt_done = new_res.get("time") or 0.0
@@ -184,11 +194,11 @@ def run_instance(
         if hb:
             with _long_task_heartbeat("MD Benders (McDaniel-Devine, standard cuts)", heartbeat_sec):
                 md_res = solve_md_benders_hub_arc(
-                    n, p, W, D, time_limit=time_limit, verbose=False, use_phase1=use_phase1
+                    n, p, W, D, time_limit=time_limit, verbose=gurobi_logs, use_phase1=use_phase1
                 )
         else:
             md_res = solve_md_benders_hub_arc(
-                n, p, W, D, time_limit=time_limit, verbose=False, use_phase1=use_phase1
+                n, p, W, D, time_limit=time_limit, verbose=gurobi_logs, use_phase1=use_phase1
             )
         if stage_progress:
             print(f"done {md_res.get('time') or 0.0:.2f}s | ", end="", flush=True)
@@ -198,11 +208,11 @@ def run_instance(
         if hb:
             with _long_task_heartbeat("MD Pareto Benders (two_step)", heartbeat_sec):
                 mdp_res = solve_md_benders_hub_arc_pareto(
-                    n, p, W, D, time_limit=time_limit, verbose=False, use_phase1=use_phase1
+                    n, p, W, D, time_limit=time_limit, verbose=gurobi_logs, use_phase1=use_phase1
                 )
         else:
             mdp_res = solve_md_benders_hub_arc_pareto(
-                n, p, W, D, time_limit=time_limit, verbose=False, use_phase1=use_phase1
+                n, p, W, D, time_limit=time_limit, verbose=gurobi_logs, use_phase1=use_phase1
             )
         if stage_progress:
             print(f"done {mdp_res.get('time') or 0.0:.2f}s | ", end="", flush=True)
@@ -212,12 +222,12 @@ def run_instance(
         if hb:
             with _long_task_heartbeat("New-model Pareto phase12 (two_step)", heartbeat_sec):
                 p12_res = solve_benders_hub_arc_pareto_phase12(
-                    n, p, W, D, time_limit=time_limit, verbose=False,
+                    n, p, W, D, time_limit=time_limit, verbose=gurobi_logs,
                     use_phase1=use_phase1, pareto_method="two_step",
                 )
         else:
             p12_res = solve_benders_hub_arc_pareto_phase12(
-                n, p, W, D, time_limit=time_limit, verbose=False,
+                n, p, W, D, time_limit=time_limit, verbose=gurobi_logs,
                 use_phase1=use_phase1, pareto_method="two_step",
             )
         if stage_progress:
@@ -268,6 +278,9 @@ def run_instance(
         "new_obj": new_res["objective"],
         "new_time": new_res["time"],
         "new_status": new_res["status"],
+        "f3_gap": f3_res.get("mip_gap"),
+        "norm_gap": norm_res.get("mip_gap"),
+        "new_gap": new_res.get("mip_gap"),
         "match": match_f3,
         "diff_norm": diff_norm,
         "diff_new": diff_new,
@@ -276,12 +289,15 @@ def run_instance(
         out["md_time"] = md_res.get("time")
         out["md_obj"] = md_res.get("objective")
         out["md_status"] = md_res.get("status")
+        out["md_gap"] = md_res.get("mip_gap")
         out["mdp_time"] = mdp_res.get("time")
         out["mdp_obj"] = mdp_res.get("objective")
         out["mdp_status"] = mdp_res.get("status")
+        out["mdp_gap"] = mdp_res.get("mip_gap")
         out["p12_time"] = p12_res.get("time")
         out["p12_obj"] = p12_res.get("objective")
         out["p12_status"] = p12_res.get("status")
+        out["p12_gap"] = p12_res.get("mip_gap")
     return out
 
 
@@ -387,12 +403,27 @@ def run_timing_suite(
                             f"      Obj: F3={f3o_s}  NormB={no_s}  NewB={neo_s}  "
                             f"MD={mdo_s}  MDP={mdpo_s}  P12={p12o_s}  |  {match_str}"
                         )
+                        print(
+                            "      Gap: "
+                            f"F3={_fmt_gap(r.get('f3_gap'))}  "
+                            f"NormB={_fmt_gap(r.get('norm_gap'))}  "
+                            f"NewB={_fmt_gap(r.get('new_gap'))}  "
+                            f"MD={_fmt_gap(r.get('md_gap'))}  "
+                            f"MDP={_fmt_gap(r.get('mdp_gap'))}  "
+                            f"P12={_fmt_gap(r.get('p12_gap'))}"
+                        )
                     else:
                         print(
                             f"F3={f3s}s, NormB={nt:.3f}s, NewB={nn:.3f}s (fastest: {fastest})"
                         )
                         print(
                             f"      Obj: F3={f3o_s}  NormB={no_s}  NewB={neo_s}  |  {match_str}"
+                        )
+                        print(
+                            "      Gap: "
+                            f"F3={_fmt_gap(r.get('f3_gap'))}  "
+                            f"NormB={_fmt_gap(r.get('norm_gap'))}  "
+                            f"NewB={_fmt_gap(r.get('new_gap'))}"
                         )
             except Exception as e:
                 if verbose:
