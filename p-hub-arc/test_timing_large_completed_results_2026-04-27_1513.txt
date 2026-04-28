@@ -1,0 +1,15 @@
+Completed results extracted from terminal output
+Source: /Users/muskan/.cursor/projects/Users-muskan-BTP/terminals/2.txt
+Total completed tests found: 3
+
+[1] n=30, p=6, seed=42
+  F3=591.391s, NormB=458.942s, NewB=299.969s, MD=193.591s, MDP=249.638s, P12=248.986s (fastest: MD)
+  Obj: F3=30796.2652  NormB=30796.2652  NewB=30796.2652  MD=30796.2652  MDP=30796.2652  P12=30796.2652  |  Match
+
+[2] n=30, p=6, seed=43
+  F3=133.438s, NormB=600.549s, NewB=165.463s, MD=114.342s, MDP=188.015s, P12=258.692s (fastest: MD)
+  Obj: F3=33157.6525  NormB=N/A  NewB=33157.6525  MD=33157.6525  MDP=33157.6525  P12=33157.6525  |  Match
+
+[3] n=30, p=6, seed=44
+  F3=428.585s, NormB=600.292s, NewB=337.928s, MD=287.178s, MDP=370.657s, P12=411.328s (fastest: MD)
+  Obj: F3=33196.0095  NormB=N/A  NewB=33196.0095  MD=33196.0095  MDP=33196.0095  P12=33196.0095  |  Match

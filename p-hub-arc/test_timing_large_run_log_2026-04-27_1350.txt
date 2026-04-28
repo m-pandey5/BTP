@@ -1,0 +1,305 @@
+active_command: python3 test_timing_large.py
+last_command: ls
+last_exit_code: 0
+---
+source /Users/muskan/BTP/venv/bin/activate
+muskan@Muskans-MacBook-Air BTP % source /Users/musk
+an/BTP/venv/bin/activate
+(venv) muskan@Muskans-MacBook-Air BTP % ls
+benders         p-median        venv
+p-hub-arc       README.md
+(venv) muskan@Muskans-MacBook-Air BTP % cd p-hub-arc
+(venv) muskan@Muskans-MacBook-Air p-hub-arc % ls
+__pycache__
+algo1_hub_arc.py
+algo2_hub_arc.py
+algo3_hub_arc.py
+canonical_formulation.py
+classical_formulation.py
+hub_arc_models.py
+MATH_HUB_ARC_ALGORITHMS.md
+md_benders_hub_arc_pareto.py
+md_benders_hub_arc.py
+new_model_hub_arc_pareto_phase12.py
+new_model_hub_arc.py
+pareto_benders_explanation.html
+pareto_benders_explanation.tex
+pareto_benders_hub_arc_new.py
+pareto_benders_hub_arc_old.py
+pareto_benders_hub_arc.py
+pareto_benders_old_vs_new.md
+report.md
+test_benders.py
+test_hub_arc_benders_f3.py
+test_md_benders.py
+test_pareto_benders_new.py
+test_pareto_benders_old.py
+test_pareto_benders.py
+test_pareto_phase12_vs_new_model.py
+test_timing_comprehensive.py
+test_timing_large.py
+test_timing_md_vs_pareto_vs_newmodel.py
+test_timing_newmodel_vs_pareto_phase12.py
+test_timing_pareto_old_new.py
+test.py
+(venv) muskan@Muskans-MacBook-Air p-hub-arc % pytho
+n3 test_timing_large.py
+
+===============================================================================================
+LARGE-INSTANCE BATCH: F3, Norm, New, then MD, MD Pareto, P12 (same W,D; per-solve time limit; wall time is sum of solvers)
+===============================================================================================
+
+Instance specs: 13 configurations (first: n=30 sanity, then n=60..200)
+Seeds per config: [42, 43, 44] -> 39 total runs
+Time limit per solve: 600.0s  (each solver call; not a shared cap)
+
+Running suite...
+------------------------------------------------------------
+  [1] n=30, p=6, seed=42 ... (F3 …) Set parameter Username
+Set parameter LicenseID to value 2775876
+Academic license - for non-commercial use only - expires 2027-02-05
+
+      [running] F3 direct MIP (OutputFlag=0, may be slow)  (heartbeat #1, ~20s elapsed)
+
+      [running] F3 direct MIP (OutputFlag=0, may be slow)  (heartbeat #2, ~40s elapsed)
+
+      [running] F3 direct MIP (OutputFlag=0, may be slow)  (heartbeat #3, ~60s elapsed)
+
+      [running] F3 direct MIP (OutputFlag=0, may be slow)  (heartbeat #4, ~80s elapsed)
+
+      [running] F3 direct MIP (OutputFlag=0, may be slow)  (heartbeat #5, ~100s elapsed)
+
+      [running] F3 direct MIP (OutputFlag=0, may be slow)  (heartbeat #6, ~120s elapsed)
+
+      [running] F3 direct MIP (OutputFlag=0, may be slow)  (heartbeat #7, ~140s elapsed)
+
+      [running] F3 direct MIP (OutputFlag=0, may be slow)  (heartbeat #8, ~160s elapsed)
+
+      [running] F3 direct MIP (OutputFlag=0, may be slow)  (heartbeat #9, ~180s elapsed)
+
+      [running] F3 direct MIP (OutputFlag=0, may be slow)  (heartbeat #10, ~200s elapsed)
+
+      [running] F3 direct MIP (OutputFlag=0, may be slow)  (heartbeat #11, ~220s elapsed)
+
+      [running] F3 direct MIP (OutputFlag=0, may be slow)  (heartbeat #12, ~240s elapsed)
+
+      [running] F3 direct MIP (OutputFlag=0, may be slow)  (heartbeat #13, ~260s elapsed)
+
+      [running] F3 direct MIP (OutputFlag=0, may be slow)  (heartbeat #14, ~280s elapsed)
+
+      [running] F3 direct MIP (OutputFlag=0, may be slow)  (heartbeat #15, ~300s elapsed)
+
+      [running] F3 direct MIP (OutputFlag=0, may be slow)  (heartbeat #16, ~320s elapsed)
+
+      [running] F3 direct MIP (OutputFlag=0, may be slow)  (heartbeat #17, ~340s elapsed)
+
+      [running] F3 direct MIP (OutputFlag=0, may be slow)  (heartbeat #18, ~360s elapsed)
+
+      [running] F3 direct MIP (OutputFlag=0, may be slow)  (heartbeat #19, ~380s elapsed)
+
+      [running] F3 direct MIP (OutputFlag=0, may be slow)  (heartbeat #20, ~400s elapsed)
+
+      [running] F3 direct MIP (OutputFlag=0, may be slow)  (heartbeat #21, ~420s elapsed)
+
+      [running] F3 direct MIP (OutputFlag=0, may be slow)  (heartbeat #22, ~440s elapsed)
+
+      [running] F3 direct MIP (OutputFlag=0, may be slow)  (heartbeat #23, ~460s elapsed)
+
+      [running] F3 direct MIP (OutputFlag=0, may be slow)  (heartbeat #24, ~480s elapsed)
+
+      [running] F3 direct MIP (OutputFlag=0, may be slow)  (heartbeat #25, ~500s elapsed)
+
+      [running] F3 direct MIP (OutputFlag=0, may be slow)  (heartbeat #26, ~520s elapsed)
+
+      [running] F3 direct MIP (OutputFlag=0, may be slow)  (heartbeat #27, ~540s elapsed)
+
+      [running] F3 direct MIP (OutputFlag=0, may be slow)  (heartbeat #28, ~560s elapsed)
+
+      [running] F3 direct MIP (OutputFlag=0, may be slow)  (heartbeat #29, ~580s elapsed)
+
+      [running] F3 direct MIP (OutputFlag=0, may be slow)  (heartbeat #30, ~600s elapsed)
+
+      [running] F3 direct MIP (OutputFlag=0, may be slow)  (heartbeat #31, ~620s elapsed)
+done 591.39s | (Norm Benders …) 
+      [running] Normal Benders (MIP + callbacks)  (heartbeat #1, ~20s elapsed)
+
+      [running] Normal Benders (MIP + callbacks)  (heartbeat #2, ~40s elapsed)
+
+      [running] Normal Benders (MIP + callbacks)  (heartbeat #3, ~60s elapsed)
+
+      [running] Normal Benders (MIP + callbacks)  (heartbeat #4, ~80s elapsed)
+
+      [running] Normal Benders (MIP + callbacks)  (heartbeat #5, ~100s elapsed)
+
+      [running] Normal Benders (MIP + callbacks)  (heartbeat #6, ~120s elapsed)
+
+      [running] Normal Benders (MIP + callbacks)  (heartbeat #7, ~140s elapsed)
+
+      [running] Normal Benders (MIP + callbacks)  (heartbeat #8, ~160s elapsed)
+
+      [running] Normal Benders (MIP + callbacks)  (heartbeat #9, ~180s elapsed)
+
+      [running] Normal Benders (MIP + callbacks)  (heartbeat #10, ~200s elapsed)
+
+      [running] Normal Benders (MIP + callbacks)  (heartbeat #11, ~220s elapsed)
+
+      [running] Normal Benders (MIP + callbacks)  (heartbeat #12, ~240s elapsed)
+
+      [running] Normal Benders (MIP + callbacks)  (heartbeat #13, ~260s elapsed)
+
+      [running] Normal Benders (MIP + callbacks)  (heartbeat #14, ~280s elapsed)
+
+      [running] Normal Benders (MIP + callbacks)  (heartbeat #15, ~300s elapsed)
+
+      [running] Normal Benders (MIP + callbacks)  (heartbeat #16, ~320s elapsed)
+
+      [running] Normal Benders (MIP + callbacks)  (heartbeat #17, ~340s elapsed)
+
+      [running] Normal Benders (MIP + callbacks)  (heartbeat #18, ~360s elapsed)
+
+      [running] Normal Benders (MIP + callbacks)  (heartbeat #19, ~380s elapsed)
+
+      [running] Normal Benders (MIP + callbacks)  (heartbeat #20, ~400s elapsed)
+
+      [running] Normal Benders (MIP + callbacks)  (heartbeat #21, ~420s elapsed)
+
+      [running] Normal Benders (MIP + callbacks)  (heartbeat #22, ~440s elapsed)
+done 458.94s | (New Benders …) 
+      [running] New Benders (Phase1 LP + Phase2 MIP)  (heartbeat #1, ~20s elapsed)
+
+      [running] New Benders (Phase1 LP + Phase2 MIP)  (heartbeat #2, ~95s elapsed)
+
+      [running] New Benders (Phase1 LP + Phase2 MIP)  (heartbeat #3, ~115s elapsed)
+
+      [running] New Benders (Phase1 LP + Phase2 MIP)  (heartbeat #4, ~135s elapsed)
+
+      [running] New Benders (Phase1 LP + Phase2 MIP)  (heartbeat #5, ~155s elapsed)
+
+      [running] New Benders (Phase1 LP + Phase2 MIP)  (heartbeat #6, ~175s elapsed)
+
+      [running] New Benders (Phase1 LP + Phase2 MIP)  (heartbeat #7, ~195s elapsed)
+
+      [running] New Benders (Phase1 LP + Phase2 MIP)  (heartbeat #8, ~215s elapsed)
+
+      [running] New Benders (Phase1 LP + Phase2 MIP)  (heartbeat #9, ~235s elapsed)
+
+      [running] New Benders (Phase1 LP + Phase2 MIP)  (heartbeat #10, ~255s elapsed)
+
+      [running] New Benders (Phase1 LP + Phase2 MIP)  (heartbeat #11, ~275s elapsed)
+
+      [running] New Benders (Phase1 LP + Phase2 MIP)  (heartbeat #12, ~295s elapsed)
+done 299.97s | (MD Benders …) 
+      [running] MD Benders (McDaniel-Devine, standard cuts)  (heartbeat #1, ~20s elapsed)
+
+      [running] MD Benders (McDaniel-Devine, standard cuts)  (heartbeat #2, ~40s elapsed)
+
+      [running] MD Benders (McDaniel-Devine, standard cuts)  (heartbeat #3, ~60s elapsed)
+
+      [running] MD Benders (McDaniel-Devine, standard cuts)  (heartbeat #4, ~80s elapsed)
+
+      [running] MD Benders (McDaniel-Devine, standard cuts)  (heartbeat #5, ~100s elapsed)
+
+      [running] MD Benders (McDaniel-Devine, standard cuts)  (heartbeat #6, ~120s elapsed)
+
+      [running] MD Benders (McDaniel-Devine, standard cuts)  (heartbeat #7, ~140s elapsed)
+
+      [running] MD Benders (McDaniel-Devine, standard cuts)  (heartbeat #8, ~160s elapsed)
+
+      [running] MD Benders (McDaniel-Devine, standard cuts)  (heartbeat #9, ~180s elapsed)
+done 193.59s | (MD Pareto …) 
+      [running] MD Pareto Benders (two_step)  (heartbeat #1, ~20s elapsed)
+
+      [running] MD Pareto Benders (two_step)  (heartbeat #2, ~40s elapsed)
+
+      [running] MD Pareto Benders (two_step)  (heartbeat #3, ~60s elapsed)
+
+      [running] MD Pareto Benders (two_step)  (heartbeat #4, ~80s elapsed)
+
+      [running] MD Pareto Benders (two_step)  (heartbeat #5, ~100s elapsed)
+
+      [running] MD Pareto Benders (two_step)  (heartbeat #6, ~120s elapsed)
+
+      [running] MD Pareto Benders (two_step)  (heartbeat #7, ~140s elapsed)
+
+      [running] MD Pareto Benders (two_step)  (heartbeat #8, ~160s elapsed)
+
+      [running] MD Pareto Benders (two_step)  (heartbeat #9, ~180s elapsed)
+
+      [running] MD Pareto Benders (two_step)  (heartbeat #10, ~200s elapsed)
+
+      [running] MD Pareto Benders (two_step)  (heartbeat #11, ~220s elapsed)
+
+      [running] MD Pareto Benders (two_step)  (heartbeat #12, ~240s elapsed)
+done 249.64s | (Pareto phase12 …) 
+      [running] New-model Pareto phase12 (two_step)  (heartbeat #1, ~20s elapsed)
+
+      [running] New-model Pareto phase12 (two_step)  (heartbeat #2, ~40s elapsed)
+
+      [running] New-model Pareto phase12 (two_step)  (heartbeat #3, ~60s elapsed)
+
+      [running] New-model Pareto phase12 (two_step)  (heartbeat #4, ~80s elapsed)
+
+      [running] New-model Pareto phase12 (two_step)  (heartbeat #5, ~100s elapsed)
+
+      [running] New-model Pareto phase12 (two_step)  (heartbeat #6, ~120s elapsed)
+
+      [running] New-model Pareto phase12 (two_step)  (heartbeat #7, ~140s elapsed)
+
+      [running] New-model Pareto phase12 (two_step)  (heartbeat #8, ~160s elapsed)
+
+      [running] New-model Pareto phase12 (two_step)  (heartbeat #9, ~180s elapsed)
+
+      [running] New-model Pareto phase12 (two_step)  (heartbeat #10, ~200s elapsed)
+
+      [running] New-model Pareto phase12 (two_step)  (heartbeat #11, ~220s elapsed)
+
+      [running] New-model Pareto phase12 (two_step)  (heartbeat #12, ~240s elapsed)
+done 248.99s
+F3=591.391s, NormB=458.942s, NewB=299.969s, MD=193.591s, MDP=249.638s, P12=248.986s (fastest: MD)
+      Obj: F3=30796.2652  NormB=30796.2652  NewB=30796.2652  MD=30796.2652  MDP=30796.2652  P12=30796.2652  |  Match
+  [2] n=30, p=6, seed=43 ... (F3 …) 
+      [running] F3 direct MIP (OutputFlag=0, may be slow)  (heartbeat #1, ~20s elapsed)
+
+      [running] F3 direct MIP (OutputFlag=0, may be slow)  (heartbeat #2, ~40s elapsed)
+
+      [running] F3 direct MIP (OutputFlag=0, may be slow)  (heartbeat #3, ~60s elapsed)
+
+      [running] F3 direct MIP (OutputFlag=0, may be slow)  (heartbeat #4, ~80s elapsed)
+
+      [running] F3 direct MIP (OutputFlag=0, may be slow)  (heartbeat #5, ~100s elapsed)
+
+      [running] F3 direct MIP (OutputFlag=0, may be slow)  (heartbeat #6, ~120s elapsed)
+
+      [running] F3 direct MIP (OutputFlag=0, may be slow)  (heartbeat #7, ~140s elapsed)
+done 133.44s | (Norm Benders …) 
+      [running] Normal Benders (MIP + callbacks)  (heartbeat #1, ~20s elapsed)
+
+      [running] Normal Benders (MIP + callbacks)  (heartbeat #2, ~40s elapsed)
+
+      [running] Normal Benders (MIP + callbacks)  (heartbeat #3, ~60s elapsed)
+
+      [running] Normal Benders (MIP + callbacks)  (heartbeat #4, ~80s elapsed)
+
+      [running] Normal Benders (MIP + callbacks)  (heartbeat #5, ~100s elapsed)
+
+      [running] Normal Benders (MIP + callbacks)  (heartbeat #6, ~120s elapsed)
+
+      [running] Normal Benders (MIP + callbacks)  (heartbeat #7, ~140s elapsed)
+
+      [running] Normal Benders (MIP + callbacks)  (heartbeat #8, ~160s elapsed)
+
+      [running] Normal Benders (MIP + callbacks)  (heartbeat #9, ~180s elapsed)
+
+      [running] Normal Benders (MIP + callbacks)  (heartbeat #10, ~200s elapsed)
+
+      [running] Normal Benders (MIP + callbacks)  (heartbeat #11, ~220s elapsed)
+
+      [running] Normal Benders (MIP + callbacks)  (heartbeat #12, ~240s elapsed)
+
+      [running] Normal Benders (MIP + callbacks)  (heartbeat #13, ~260s elapsed)
+
+      [running] Normal Benders (MIP + callbacks)  (heartbeat #14, ~280s elapsed)
+
+      [running] Normal Benders (MIP + callbacks)  (heartbeat #15, ~300s elapsed)
+
+      [running] Normal Benders (MIP + callbacks)  (heartbeat #16, ~320s elapsed)
