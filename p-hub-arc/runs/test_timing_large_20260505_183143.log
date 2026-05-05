@@ -1,0 +1,176 @@
+
+===============================================================================================
+LARGE-INSTANCE BATCH: F3, then Norm, then New (LARGE_BENCH_NO_EXTRA=1 — no MD/P12)
+===============================================================================================
+
+Instance specs: 13 configurations (first: n=30 sanity, then n=60..200)
+Default seeds: [42, 43, 44] | Large-n seeds: [42]
+Total planned runs: 23
+Tiered TimeLimit policy (per solver): n<=30:3600s, n in {60,75}:7200s, n>=100:10800s
+Forced TimeLimit override active: 10.0s (LARGE_BENCH_FORCE_TIME_LIMIT)
+Row classification gap threshold: 0.01
+Seed policy active: staged seeds for n>=100
+Run log: /Users/muskan/BTP/p-hub-arc/runs/test_timing_large_20260505_183143.log
+Live CSV: /Users/muskan/BTP/p-hub-arc/runs/large_instance_results_live_20260505_183143.csv
+Progress: /Users/muskan/BTP/p-hub-arc/runs/large_instance_progress_20260505_183143.txt
+MD / MD Pareto / P12: skipped (unset LARGE_BENCH_NO_EXTRA to run all six solvers)
+
+===============================================================================================
+LARGE-INSTANCE BATCH: F3, then Norm, then New (LARGE_BENCH_NO_EXTRA=1 — no MD/P12)
+===============================================================================================
+DEBUG: LARGE_BENCH_MAX_RUNS active -> limiting to first 1 runs
+
+Instance specs: 13 configurations (first: n=30 sanity, then n=60..200)
+Default seeds: [42, 43, 44] | Large-n seeds: [42]
+Total planned runs: 39
+Tiered TimeLimit policy (per solver): n<=30:3600s, n in {60,75}:7200s, n>=100:10800s
+Forced TimeLimit override active: 10.0s (LARGE_BENCH_FORCE_TIME_LIMIT)
+Row classification gap threshold: 0.01
+Gurobi logs: disabled (LARGE_BENCH_NO_GUROBI_LOGS=1)
+Seed policy active: all seeds for all n
+
+Running suite...Run log: /Users/muskan/BTP/p-hub-arc/runs/test_timing_large_20260505_183143.log
+
+Live CSV: /Users/muskan/BTP/p-hub-arc/runs/large_instance_results_live_20260505_183143.csv
+Progress: /Users/muskan/BTP/p-hub-arc/runs/large_instance_progress_20260505_183143.txt
+------------------------------------------------------------
+MD / MD Pareto / P12: skipped (unset LARGE_BENCH_NO_EXTRA to run all six solvers)
+DEBUG: LARGE_BENCH_MAX_RUNS active -> limiting to first 1 runs
+Gurobi logs: disabled (LARGE_BENCH_NO_GUROBI_LOGS=1)
+
+Running suite...
+------------------------------------------------------------
+  [1] n=30, p=6, seed=42 ...   [1] n=30, p=6, seed=42 ... (F3 …) (F3 …) Set parameter Username
+Set parameter LicenseID to value 2775876
+Set parameter Username
+Set parameter LicenseID to value 2775876
+Academic license - for non-commercial use only - expires 2027-02-05
+Academic license - for non-commercial use only - expires 2027-02-05
+
+      [running] F3 direct MIP (OutputFlag=0, may be slow)  (heartbeat #1, ~20s elapsed)
+      [running] F3 direct MIP (OutputFlag=0, may be slow)  (heartbeat #1, ~20s elapsed)
+
+
+      [running] F3 direct MIP (OutputFlag=0, may be slow)  (heartbeat #2, ~40s elapsed)
+      [running] F3 direct MIP (OutputFlag=0, may be slow)  (heartbeat #2, ~40s elapsed)
+
+
+      [running] F3 direct MIP (OutputFlag=0, may be slow)  (heartbeat #3, ~60s elapsed)
+
+      [running] F3 direct MIP (OutputFlag=0, may be slow)  (heartbeat #3, ~60s elapsed)
+
+      [running] F3 direct MIP (OutputFlag=0, may be slow)  (heartbeat #4, ~80s elapsed)
+
+      [running] F3 direct MIP (OutputFlag=0, may be slow)  (heartbeat #4, ~80s elapsed)
+
+      [running] F3 direct MIP (OutputFlag=0, may be slow)  (heartbeat #5, ~100s elapsed)
+
+      [running] F3 direct MIP (OutputFlag=0, may be slow)  (heartbeat #5, ~100s elapsed)
+done 48.43s | (Norm Benders …) done 48.45s | (Norm Benders …) 
+      [running] Normal Benders (MIP + callbacks)  (heartbeat #1, ~20s elapsed)
+
+      [running] Normal Benders (MIP + callbacks)  (heartbeat #1, ~20s elapsed)
+done 27.86s | done 27.82s | (New Benders …) (New Benders …) 
+      [running] New Benders (Phase1 LP + Phase2 MIP)  (heartbeat #1, ~20s elapsed)
+      [running] New Benders (Phase1 LP + Phase2 MIP)  (heartbeat #1, ~20s elapsed)
+
+
+      [running] New Benders (Phase1 LP + Phase2 MIP)  (heartbeat #2, ~40s elapsed)
+
+      [running] New Benders (Phase1 LP + Phase2 MIP)  (heartbeat #2, ~40s elapsed)
+
+      [running] New Benders (Phase1 LP + Phase2 MIP)  (heartbeat #3, ~60s elapsed)
+      [running] New Benders (Phase1 LP + Phase2 MIP)  (heartbeat #3, ~60s elapsed)
+
+
+      [running] New Benders (Phase1 LP + Phase2 MIP)  (heartbeat #4, ~80s elapsed)
+
+      [running] New Benders (Phase1 LP + Phase2 MIP)  (heartbeat #4, ~80s elapsed)
+
+      [running] New Benders (Phase1 LP + Phase2 MIP)  (heartbeat #5, ~100s elapsed)
+
+      [running] New Benders (Phase1 LP + Phase2 MIP)  (heartbeat #5, ~100s elapsed)
+
+      [running] New Benders (Phase1 LP + Phase2 MIP)  (heartbeat #6, ~120s elapsed)
+
+      [running] New Benders (Phase1 LP + Phase2 MIP)  (heartbeat #6, ~120s elapsed)
+
+      [running] New Benders (Phase1 LP + Phase2 MIP)  (heartbeat #7, ~140s elapsed)
+
+      [running] New Benders (Phase1 LP + Phase2 MIP)  (heartbeat #7, ~140s elapsed)
+done 151.73s
+done 151.84s
+      Class: UNRESOLVED (limit=10s)
+F3=48.452s, NormB=27.825s, NewB=151.727s (fastest: NormB)
+      Obj: F3=N/A  NormB=N/A  NewB=N/A  |  MISMATCH
+      GAP SUMMARY: F3=N/A  NormB=N/A  NewB=N/A
+      WARN F3: status=TIME_LIMIT, incumbent=N/A, gap=N/A
+      WARN NormB: status=TIME_LIMIT, incumbent=N/A, gap=N/A
+      WARN NewB: status=FAILED, incumbent=N/A, gap=N/A
+
+Results saved to: /Users/muskan/BTP/p-hub-arc/runs/large_instance_results_live_20260505_183143.csv
+
+Stopping early due to LARGE_BENCH_MAX_RUNS=1.
+
+===================================================================================================================
+TIMING COMPARISON TABLE (F3 vs Normal Benders vs New Benders)
+===================================================================================================================
+   n |   p |  #runs |     F3 (s) | Norm Benders (s) |  New Benders (s) |      Fastest | Match
+-------------------------------------------------------------------------------------------------------------------
+  30 |   6 |      1 |    48.4522 |          27.8246 |         151.7267 |        NormB | 0/1
+
+===================================================================================================================
+DETAILED PER-RUN RESULTS (times, objectives, match)
+===================================================================================================================
+  [1] n=30, p=6, seed=42: F3=48.4522s, NormB=27.8246s, NewB=151.7267s
+       Obj: F3=N/A  NormB=N/A  NewB=N/A  |  MISMATCH
+
+===============================================================================================
+SUMMARY
+===============================================================================================
+Total runs:             1
+Objectives match:       0/1
+F3 fastest:             0 runs
+Normal Benders fastest: 1 runs
+New Benders fastest:    0 runs
+
+Results saved to: /Users/muskan/BTP/p-hub-arc/large_instance_results.csv
+
+WARNING: Some objectives did not match.
+      Class: UNRESOLVED (limit=10s)
+F3=48.425s, NormB=27.859s, NewB=151.835s (fastest: NormB)
+      Obj: F3=N/A  NormB=N/A  NewB=N/A  |  MISMATCH
+      GAP SUMMARY: F3=N/A  NormB=N/A  NewB=N/A
+      WARN F3: status=TIME_LIMIT, incumbent=N/A, gap=N/A
+      WARN NormB: status=TIME_LIMIT, incumbent=N/A, gap=N/A
+      WARN NewB: status=FAILED, incumbent=N/A, gap=N/A
+
+Results saved to: /Users/muskan/BTP/p-hub-arc/runs/large_instance_results_live_20260505_183143.csv
+
+Stopping early due to LARGE_BENCH_MAX_RUNS=1.
+
+===================================================================================================================
+TIMING COMPARISON TABLE (F3 vs Normal Benders vs New Benders)
+===================================================================================================================
+   n |   p |  #runs |     F3 (s) | Norm Benders (s) |  New Benders (s) |      Fastest | Match
+-------------------------------------------------------------------------------------------------------------------
+  30 |   6 |      1 |    48.4253 |          27.8590 |         151.8354 |        NormB | 0/1
+
+===================================================================================================================
+DETAILED PER-RUN RESULTS (times, objectives, match)
+===================================================================================================================
+  [1] n=30, p=6, seed=42: F3=48.4253s, NormB=27.8590s, NewB=151.8354s
+       Obj: F3=N/A  NormB=N/A  NewB=N/A  |  MISMATCH
+
+===============================================================================================
+SUMMARY
+===============================================================================================
+Total runs:             1
+Objectives match:       0/1
+F3 fastest:             0 runs
+Normal Benders fastest: 1 runs
+New Benders fastest:    0 runs
+
+Results saved to: /Users/muskan/BTP/p-hub-arc/large_instance_results.csv
+
+WARNING: Some objectives did not match.

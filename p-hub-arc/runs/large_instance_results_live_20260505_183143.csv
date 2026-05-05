@@ -1,0 +1,2 @@
+n,p,seed,effective_time_limit,f3_time,f3_obj,f3_status,f3_gap,norm_time,norm_obj,norm_status,norm_gap,new_time,new_obj,new_status,new_gap,md_time,md_obj,md_status,md_gap,mdp_time,mdp_obj,mdp_status,mdp_gap,p12_time,p12_obj,p12_status,p12_gap,row_classification,match
+30,6,42,10.0,48.42531204223633,,TIME_LIMIT,,27.85902500152588,,TIME_LIMIT,,151.8353977203369,,FAILED,,,,,,,,,,,,,,UNRESOLVED,False

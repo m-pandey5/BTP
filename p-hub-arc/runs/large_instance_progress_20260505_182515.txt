@@ -1,0 +1,6 @@
+timestamp: 2026-05-05T18:37:23
+completed_runs: 2/23
+current_case: IDLE_BETWEEN_CASES
+last_completed_case: [2] n=30, p=6, seed=43
+live_csv: /Users/muskan/BTP/p-hub-arc/runs/large_instance_results_live_20260505_182515.csv
+run_log: /Users/muskan/BTP/p-hub-arc/runs/test_timing_large_20260505_182515.log

@@ -58,6 +58,10 @@ from test_timing_comprehensive import (
 )
 
 
+GRB_OPTIMAL_STATUS = {2, "OPTIMAL"}
+GRB_TIME_LIMIT_STATUS = {9, "TIME_LIMIT"}
+
+
 def get_large_instance_specs() -> List[Dict]:
     """Instance configs: one small n=30 smoke case first, then n=60..200 (two p each)."""
     configs = []
@@ -80,6 +84,7 @@ def save_results_csv(results: List[Dict], path: str) -> None:
     """Save per-run results to a CSV (all solver time/obj/status columns + match)."""
     fieldnames = [
         "n", "p", "seed",
+        "effective_time_limit",
         "f3_time", "f3_obj", "f3_status",
         "f3_gap",
         "norm_time", "norm_obj", "norm_status",
@@ -92,6 +97,7 @@ def save_results_csv(results: List[Dict], path: str) -> None:
         "mdp_gap",
         "p12_time", "p12_obj", "p12_status",
         "p12_gap",
+        "row_classification",
         "match",
     ]
     with open(path, "w", newline="") as f:
@@ -104,6 +110,41 @@ def save_results_csv(results: List[Dict], path: str) -> None:
 
 def _env_truthy(name: str) -> bool:
     return os.environ.get(name, "").strip().lower() in ("1", "true", "yes", "y")
+
+
+def _status_str(status: object) -> str:
+    if isinstance(status, str):
+        return status
+    if status == 2:
+        return "OPTIMAL"
+    if status == 9:
+        return "TIME_LIMIT"
+    return str(status)
+
+
+def _parse_seed_list(value: str) -> List[int]:
+    seeds: List[int] = []
+    for tok in value.split(","):
+        t = tok.strip()
+        if t:
+            seeds.append(int(t))
+    return seeds
+
+
+def _seeds_for_n(n: int, default_seeds: List[int], large_seeds: List[int], all_seeds: bool) -> List[int]:
+    if all_seeds or n <= 75:
+        return list(default_seeds)
+    return list(large_seeds)
+
+
+def _effective_time_limit_for_n(n: int, forced_limit: Optional[float]) -> float:
+    if forced_limit is not None:
+        return forced_limit
+    if n <= 30:
+        return 3600.0
+    if n in (60, 75):
+        return 7200.0
+    return 10800.0
 
 
 def _fastest_winner(
@@ -237,6 +278,32 @@ def _print_gap_summary(r: Dict, include_extras: bool, skip_f3: bool) -> None:
     print("      GAP SUMMARY: " + "  ".join(parts))
 
 
+def _classify_row(r: Dict, include_extras: bool, skip_f3: bool, gap_threshold: float) -> str:
+    if "error" in r:
+        return "UNRESOLVED"
+
+    solver_keys: List[Tuple[str, str]] = []
+    if not skip_f3:
+        solver_keys.append(("f3_status", "f3_gap"))
+    solver_keys.extend([("norm_status", "norm_gap"), ("new_status", "new_gap")])
+    if include_extras:
+        solver_keys.extend([("md_status", "md_gap"), ("mdp_status", "mdp_gap"), ("p12_status", "p12_gap")])
+
+    statuses = [_status_str(r.get(sk)) for sk, _ in solver_keys]
+    gaps = [r.get(gk) for _, gk in solver_keys]
+    if all(s == "OPTIMAL" for s in statuses) and bool(r.get("match")):
+        return "VERIFIED"
+
+    has_failed = any(s not in ("OPTIMAL", "TIME_LIMIT", "SKIPPED") for s in statuses)
+    if has_failed:
+        return "UNRESOLVED"
+
+    max_gap = max((g for g in gaps if isinstance(g, (int, float))), default=None)
+    if max_gap is not None and max_gap <= gap_threshold:
+        return "NEAR_VERIFIED"
+    return "UNRESOLVED"
+
+
 def main():
     skip_f3 = _env_truthy("LARGE_BENCH_SKIP_F3")
     # Default: run MD + MD Pareto + P12 after New. Set LARGE_BENCH_NO_EXTRA=1 to skip.
@@ -246,9 +313,16 @@ def main():
 
     instance_specs = get_large_instance_specs()
     seeds = [42, 43, 44]
-    time_limit = 600.0
+    large_seeds_env = os.environ.get("LARGE_BENCH_LARGE_SEEDS", "42")
+    large_seeds = _parse_seed_list(large_seeds_env)
+    all_seeds = _env_truthy("LARGE_BENCH_ALL_SEEDS")
+    force_limit_env = os.environ.get("LARGE_BENCH_FORCE_TIME_LIMIT", "").strip()
+    forced_limit = float(force_limit_env) if force_limit_env else None
+    gap_threshold = float(os.environ.get("LARGE_BENCH_GAP_THRESHOLD", "0.01"))
 
-    total_runs = len(instance_specs) * len(seeds)
+    total_runs = 0
+    for spec in instance_specs:
+        total_runs += len(_seeds_for_n(spec["n"], seeds, large_seeds, all_seeds))
     run_ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     runs_dir = os.path.join(_this_dir, "runs")
     os.makedirs(runs_dir, exist_ok=True)
@@ -281,8 +355,13 @@ def main():
             f"\nInstance specs: {len(instance_specs)} configurations "
             f"(first: n=30 sanity, then n=60..200)"
         )
-        print(f"Seeds per config: {seeds} -> {total_runs} total runs")
-        print(f"Time limit per solve: {time_limit}s  (each solver call; not a shared cap)")
+        print(f"Default seeds: {seeds} | Large-n seeds: {large_seeds}")
+        print(f"Total planned runs: {total_runs}")
+        print("Tiered TimeLimit policy (per solver): n<=30:3600s, n in {60,75}:7200s, n>=100:10800s")
+        if forced_limit is not None:
+            print(f"Forced TimeLimit override active: {forced_limit}s (LARGE_BENCH_FORCE_TIME_LIMIT)")
+        print(f"Row classification gap threshold: {gap_threshold}")
+        print(f"Seed policy active: {'all seeds for all n' if all_seeds else 'staged seeds for n>=100'}")
         print(f"Run log: {run_log_path}")
         print(f"Live CSV: {live_csv_path}")
         print(f"Progress: {progress_path}")
@@ -308,10 +387,11 @@ def main():
             n = spec["n"]
             p = spec["p"]
             fixed = spec.get("fixed", False)
-            seed_list = [None] if fixed else seeds
+            seed_list = [None] if fixed else _seeds_for_n(n, seeds, large_seeds, all_seeds)
             for seed in seed_list:
                 run_idx += 1
                 case_label = f"[{run_idx}] n={n}, p={p}" + (f", seed={seed}" if seed is not None else " (fixed)")
+                effective_time_limit = _effective_time_limit_for_n(n, forced_limit)
 
                 _write_live_progress(
                     progress_path=progress_path,
@@ -335,7 +415,7 @@ def main():
                         p,
                         W,
                         D,
-                        time_limit=time_limit,
+                        time_limit=effective_time_limit,
                         use_phase1=True,
                         stage_progress=True,
                         heartbeat_sec=(0.0 if gurobi_logs else 20.0),
@@ -345,8 +425,20 @@ def main():
                     )
                     r["seed"] = seed
                     r["fixed"] = fixed
+                    r["effective_time_limit"] = effective_time_limit
+                    r["f3_status"] = _status_str(r.get("f3_status"))
+                    r["norm_status"] = _status_str(r.get("norm_status"))
+                    r["new_status"] = _status_str(r.get("new_status"))
+                    if include_extras:
+                        r["md_status"] = _status_str(r.get("md_status"))
+                        r["mdp_status"] = _status_str(r.get("mdp_status"))
+                        r["p12_status"] = _status_str(r.get("p12_status"))
+                    r["row_classification"] = _classify_row(
+                        r, include_extras=include_extras, skip_f3=skip_f3, gap_threshold=gap_threshold
+                    )
                     r["_case_label"] = case_label
                     results.append(r)
+                    print(f"      Class: {r['row_classification']} (limit={effective_time_limit:.0f}s)")
                     if include_extras:
                         print(
                             f"F3={_fmt_time(r.get('f3_time'))}s, NormB={_fmt_time(r.get('norm_time'))}s, "
@@ -387,10 +479,12 @@ def main():
                         "p": p,
                         "seed": seed,
                         "fixed": fixed,
+                        "effective_time_limit": effective_time_limit,
                         "f3_time": None,
                         "norm_time": None,
                         "new_time": None,
                         "match": False,
+                        "row_classification": "UNRESOLVED",
                         "error": str(e),
                         "_case_label": case_label,
                     }
