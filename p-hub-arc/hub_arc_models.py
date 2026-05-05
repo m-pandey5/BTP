@@ -381,7 +381,7 @@ class HubArcBenders:
                 cuts_added += 1
 
                 if self.verbose:
-                    print(f"[CUT] ({i},{j})  SP={sp_obj:.6f}  θ̂={theta_hat[(i,j)]:.6f}")
+                    print(f"[CUT] ({i},{j})  SP={sp_obj:.6f}  theta_hat={theta_hat[(i,j)]:.6f}")
 
         if self.verbose and cuts_added:
             print(f"[CALLBACK] Added {cuts_added} cuts.")

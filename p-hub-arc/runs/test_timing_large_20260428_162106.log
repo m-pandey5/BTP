@@ -1,0 +1,89 @@
+
+===============================================================================================
+LARGE-INSTANCE BATCH: F3, Norm, New, then MD, MD Pareto, P12 (same W,D; per-solve time limit; wall time is sum of solvers)
+===============================================================================================
+
+Instance specs: 13 configurations (first: n=30 sanity, then n=60..200)
+Seeds per config: [42, 43, 44] -> 39 total runs
+Time limit per solve: 600.0s  (each solver call; not a shared cap)
+Run log: /Users/muskan/BTP/p-hub-arc/runs/test_timing_large_20260428_162106.log
+Live CSV: /Users/muskan/BTP/p-hub-arc/runs/large_instance_results_live_20260428_162106.csv
+Progress: /Users/muskan/BTP/p-hub-arc/runs/large_instance_progress_20260428_162106.txt
+Gurobi logs: enabled by default (set LARGE_BENCH_NO_GUROBI_LOGS=1 to disable)
+
+Running suite...
+------------------------------------------------------------
+  [1] n=30, p=6, seed=42 ... (F3 …) Set parameter Username
+Set parameter LicenseID to value 2775876
+Academic license - for non-commercial use only - expires 2027-02-05
+Set parameter OutputFlag to value 1
+Set parameter TimeLimit to value 600
+Gurobi Optimizer version 13.0.1 build v13.0.1rc0 (mac64[arm] - Darwin 24.6.0 24G90)
+
+CPU model: Apple M4
+Thread count: 10 physical cores, 10 logical processors, using up to 10 threads
+
+Non-default parameters:
+TimeLimit  600
+
+Optimize a model with 731671 rows, 732540 columns and 2219370 nonzeros (Min)
+Model fingerprint: 0x904ce11b
+Model has 731670 linear objective coefficients and an objective constant of 1.2274927915657405e+04
+Variable types: 731670 continuous, 870 integer (870 binary)
+Coefficient statistics:
+  Matrix range     [1e+00, 1e+00]
+  Objective range  [6e-08, 6e+01]
+  Bounds range     [1e+00, 1e+00]
+  RHS range        [1e+00, 6e+00]
+
+Presolve removed 0 rows and 0 columns (presolve time = 26s)...
+Presolve removed 546 rows and 546 columns
+Presolve time: 29.48s
+Presolved: 731125 rows, 731994 columns, 2218278 nonzeros
+Variable types: 729384 continuous, 2610 integer (2610 binary)
+Deterministic concurrent LP optimizer: primal simplex, dual simplex, and barrier
+Showing barrier log only...
+
+Root barrier log...
+
+Ordering time: 0.78s
+
+Barrier statistics:
+ Dense cols : 870
+ AA' NZ     : 1.487e+06
+ Factor NZ  : 4.312e+08 (roughly 4.0 GB of memory)
+ Factor Ops : 3.132e+11 (roughly 1 second per iteration)
+ Threads    : 7
+
+                  Objective                Residual
+Iter       Primal          Dual         Primal    Dual     Compl     Time
+   0   6.34856440e+05 -5.42625832e+07  1.95e+03 8.69e+00  1.92e+02    38s
+   1   1.79171341e+05 -4.29350686e+07  3.90e+02 2.01e-10  3.89e+01    38s
+   2   1.39914145e+05 -1.16022551e+07  1.20e+02 1.63e-10  8.79e+00    38s
+   3   1.34676244e+05 -4.61339454e+06  6.03e+01 1.54e-10  3.73e+00    38s
+   4   1.32871011e+05 -2.48402663e+06  4.07e+01 1.62e-10  2.21e+00    39s
+   5   1.28527902e+05 -7.44348675e+05  2.22e+01 1.45e-04  8.75e-01    46s
+
+Barrier performed 5 iterations in 46.42 seconds (25.67 work units)
+Optimization interrupted
+
+
+
+Root relaxation: interrupted, 33284 iterations, 16.40 seconds (20.02 work units)
+
+    Nodes    |    Current Node    |     Objective Bounds      |     Work
+ Expl Unexpl |  Obj  Depth IntInf | Incumbent    BestBd   Gap | It/Node Time
+
+     0     0          -    0               - 12274.9279      -     -   46s
+H    0     0                    242620.96871 12274.9279  94.9%     -   46s
+
+Cleanup yields a better solution
+
+Explored 1 nodes (33284 simplex iterations) in 46.59 seconds (31.16 work units)
+Thread count was 10 (of 10 available processors)
+
+Solution count 2: 63769.7 242621 
+
+Solve interrupted
+Best objective 6.376965352376e+04, best bound 1.227492791566e+04, gap 80.7511%
+done 46.60s | (Norm Benders …) 
