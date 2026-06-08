@@ -2,7 +2,8 @@
 Large-Instance Batch Timing: F3, Norm, New, plus optional MD and Pareto variants.
 
 **Solvers (same random W, D per row; sequential, not parallel; each has its own
-Gurobi TimeLimit, e.g. 600s per call — total wall time is the sum of all calls):**
+Gurobi TimeLimit — default 36000s / 10h per solver for n>=60; total wall time
+is the sum of all solver calls):**
 
   1) F3 (direct MIP) — skippable with LARGE_BENCH_SKIP_F3=1
   2) Normal Benders (HubArcBenders)
@@ -63,10 +64,8 @@ GRB_TIME_LIMIT_STATUS = {9, "TIME_LIMIT"}
 
 
 def get_large_instance_specs() -> List[Dict]:
-    """Instance configs: one small n=30 smoke case first, then n=60..200 (two p each)."""
+    """Instance configs: n=60..200 (two p values per n)."""
     configs = []
-    # Smoke: runs first so you can confirm the script solves before the heavy n=60+ block
-    configs.append({"n": 30, "p": 6, "fixed": False})
     for n, p1, p2 in [
         (60,  12, 15),
         (75,  15, 19),
@@ -140,11 +139,9 @@ def _seeds_for_n(n: int, default_seeds: List[int], large_seeds: List[int], all_s
 def _effective_time_limit_for_n(n: int, forced_limit: Optional[float]) -> float:
     if forced_limit is not None:
         return forced_limit
-    if n <= 30:
-        return 3600.0
-    if n in (60, 75):
-        return 7200.0
-    return 10800.0
+    if n >= 60:
+        return 36000.0  # 10 hours per solver
+    return 3600.0  # fallback for any smaller n if specs are extended later
 
 
 def _fastest_winner(
@@ -353,11 +350,11 @@ def main():
 
         print(
             f"\nInstance specs: {len(instance_specs)} configurations "
-            f"(first: n=30 sanity, then n=60..200)"
+            f"(n=60..200, two p per n)"
         )
         print(f"Default seeds: {seeds} | Large-n seeds: {large_seeds}")
         print(f"Total planned runs: {total_runs}")
-        print("Tiered TimeLimit policy (per solver): n<=30:3600s, n in {60,75}:7200s, n>=100:10800s")
+        print("TimeLimit policy (per solver): n>=60 -> 36000s (10 hours)")
         if forced_limit is not None:
             print(f"Forced TimeLimit override active: {forced_limit}s (LARGE_BENCH_FORCE_TIME_LIMIT)")
         print(f"Row classification gap threshold: {gap_threshold}")
