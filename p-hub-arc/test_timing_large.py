@@ -302,7 +302,8 @@ def _classify_row(r: Dict, include_extras: bool, skip_f3: bool, gap_threshold: f
 
 
 def main():
-    skip_f3 = _env_truthy("LARGE_BENCH_SKIP_F3")
+    # F3 is skipped by default (OOM on large instances). Set LARGE_BENCH_RUN_F3=1 to enable.
+    skip_f3 = not _env_truthy("LARGE_BENCH_RUN_F3")
     # Default: run MD + MD Pareto + P12 after New. Set LARGE_BENCH_NO_EXTRA=1 to skip.
     include_extras = not _env_truthy("LARGE_BENCH_NO_EXTRA")
     # Default ON: show real Gurobi logs unless explicitly disabled.

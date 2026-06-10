@@ -21,6 +21,7 @@ from typing import List, Dict, Any, Optional, Tuple
 _this_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _this_dir)
 
+import gurobipy as gp
 from hub_arc_models import solve_hub_arc_F3, HubArcBenders
 from new_model_hub_arc import solve_benders_hub_arc, preprocess
 from md_benders_hub_arc import solve_md_benders_hub_arc
@@ -130,54 +131,70 @@ def run_instance(
     else:
         if stage_progress:
             print("(F3 …)", end=" ", flush=True)
-        if hb:
-            hb_label = (
-                "F3 direct MIP (Gurobi log ON)"
-                if gurobi_logs
-                else "F3 direct MIP (OutputFlag=0, may be slow)"
-            )
-            with _long_task_heartbeat(hb_label, heartbeat_sec):
+        try:
+            if hb:
+                hb_label = (
+                    "F3 direct MIP (Gurobi log ON)"
+                    if gurobi_logs
+                    else "F3 direct MIP (OutputFlag=0, may be slow)"
+                )
+                with _long_task_heartbeat(hb_label, heartbeat_sec):
+                    f3_res = solve_hub_arc_F3(
+                        n, p, W, D, gurobi_output=gurobi_logs, time_limit=time_limit
+                    )
+            else:
                 f3_res = solve_hub_arc_F3(
                     n, p, W, D, gurobi_output=gurobi_logs, time_limit=time_limit
                 )
-        else:
-            f3_res = solve_hub_arc_F3(
-                n, p, W, D, gurobi_output=gurobi_logs, time_limit=time_limit
-            )
+        except gp.GurobiError as _f3_err:
+            # OOM (code 10001) or other Gurobi error during F3 — record failure and
+            # continue so the Benders solvers still run on this instance.
+            print(f"F3 GurobiError ({_f3_err.errno}): {_f3_err} — skipping F3, continuing with Benders", flush=True)
+            f3_res = {"objective": None, "time": None, "status": f"ERROR_{_f3_err.errno}", "mip_gap": None}
         if stage_progress:
             f3t_done = f3_res.get("time") or 0.0
             print(f"done {f3t_done:.2f}s | ", end="", flush=True)
 
+    def _fail_res(label: str, err: Exception) -> Dict[str, Any]:
+        print(f"{label} ERROR: {err} — recording failure, continuing", flush=True)
+        return {"objective": None, "time": None, "status": "ERROR", "mip_gap": None}
+
     # Normal Benders (HubArcBenders): no Phase 1, callback-only
     if stage_progress:
         print("(Norm Benders …)", end=" ", flush=True)
-    b_norm = HubArcBenders(n=n, p=p, W=W, D=D, verbose=gurobi_logs)
-    if hb:
-        with _long_task_heartbeat("Normal Benders (MIP + callbacks)", heartbeat_sec):
+    try:
+        b_norm = HubArcBenders(n=n, p=p, W=W, D=D, verbose=gurobi_logs)
+        if hb:
+            with _long_task_heartbeat("Normal Benders (MIP + callbacks)", heartbeat_sec):
+                norm_res = b_norm.solve(time_limit=time_limit)
+        else:
             norm_res = b_norm.solve(time_limit=time_limit)
-    else:
-        norm_res = b_norm.solve(time_limit=time_limit)
+        # HubArcBenders returns master.ObjVal; add constant for OD pairs with K==1
+        _, C, _, K, _, _, _ = preprocess(n, W, D)
+        if norm_res["objective"] is not None:
+            add_const = sum(C[(i, j)][0] for (i, j) in K if i != j and K[(i, j)] == 1)
+            norm_res = dict(norm_res, objective=norm_res["objective"] + add_const)
+    except Exception as _norm_err:
+        norm_res = _fail_res("NormBenders", _norm_err)
     if stage_progress:
         nt_done = norm_res.get("time") or 0.0
         print(f"done {nt_done:.2f}s | ", end="", flush=True)
-    # HubArcBenders returns master.ObjVal; add constant for OD pairs with K==1
-    _, C, _, K, _, _, _ = preprocess(n, W, D)
-    if norm_res["objective"] is not None:
-        add_const = sum(C[(i, j)][0] for (i, j) in K if i != j and K[(i, j)] == 1)
-        norm_res = dict(norm_res, objective=norm_res["objective"] + add_const)
 
     # New Benders (Phase 1 + Phase 2)
     if stage_progress:
         print("(New Benders …)", end=" ", flush=True)
-    if hb:
-        with _long_task_heartbeat("New Benders (Phase1 LP + Phase2 MIP)", heartbeat_sec):
+    try:
+        if hb:
+            with _long_task_heartbeat("New Benders (Phase1 LP + Phase2 MIP)", heartbeat_sec):
+                new_res = solve_benders_hub_arc(
+                    n, p, W, D, verbose=gurobi_logs, use_phase1=use_phase1, time_limit=time_limit
+                )
+        else:
             new_res = solve_benders_hub_arc(
                 n, p, W, D, verbose=gurobi_logs, use_phase1=use_phase1, time_limit=time_limit
             )
-    else:
-        new_res = solve_benders_hub_arc(
-            n, p, W, D, verbose=gurobi_logs, use_phase1=use_phase1, time_limit=time_limit
-        )
+    except Exception as _new_err:
+        new_res = _fail_res("NewBenders", _new_err)
     if stage_progress:
         nnt_done = new_res.get("time") or 0.0
         if include_md_and_phase12:
@@ -191,45 +208,54 @@ def run_instance(
     if include_md_and_phase12:
         if stage_progress:
             print("(MD Benders …)", end=" ", flush=True)
-        if hb:
-            with _long_task_heartbeat("MD Benders (McDaniel-Devine, standard cuts)", heartbeat_sec):
+        try:
+            if hb:
+                with _long_task_heartbeat("MD Benders (McDaniel-Devine, standard cuts)", heartbeat_sec):
+                    md_res = solve_md_benders_hub_arc(
+                        n, p, W, D, time_limit=time_limit, verbose=gurobi_logs, use_phase1=use_phase1
+                    )
+            else:
                 md_res = solve_md_benders_hub_arc(
                     n, p, W, D, time_limit=time_limit, verbose=gurobi_logs, use_phase1=use_phase1
                 )
-        else:
-            md_res = solve_md_benders_hub_arc(
-                n, p, W, D, time_limit=time_limit, verbose=gurobi_logs, use_phase1=use_phase1
-            )
+        except Exception as _md_err:
+            md_res = _fail_res("MDBenders", _md_err)
         if stage_progress:
             print(f"done {md_res.get('time') or 0.0:.2f}s | ", end="", flush=True)
 
         if stage_progress:
             print("(MD Pareto …)", end=" ", flush=True)
-        if hb:
-            with _long_task_heartbeat("MD Pareto Benders (two_step)", heartbeat_sec):
+        try:
+            if hb:
+                with _long_task_heartbeat("MD Pareto Benders (two_step)", heartbeat_sec):
+                    mdp_res = solve_md_benders_hub_arc_pareto(
+                        n, p, W, D, time_limit=time_limit, verbose=gurobi_logs, use_phase1=use_phase1
+                    )
+            else:
                 mdp_res = solve_md_benders_hub_arc_pareto(
                     n, p, W, D, time_limit=time_limit, verbose=gurobi_logs, use_phase1=use_phase1
                 )
-        else:
-            mdp_res = solve_md_benders_hub_arc_pareto(
-                n, p, W, D, time_limit=time_limit, verbose=gurobi_logs, use_phase1=use_phase1
-            )
+        except Exception as _mdp_err:
+            mdp_res = _fail_res("MDPareto", _mdp_err)
         if stage_progress:
             print(f"done {mdp_res.get('time') or 0.0:.2f}s | ", end="", flush=True)
 
         if stage_progress:
             print("(Pareto phase12 …)", end=" ", flush=True)
-        if hb:
-            with _long_task_heartbeat("New-model Pareto phase12 (two_step)", heartbeat_sec):
+        try:
+            if hb:
+                with _long_task_heartbeat("New-model Pareto phase12 (two_step)", heartbeat_sec):
+                    p12_res = solve_benders_hub_arc_pareto_phase12(
+                        n, p, W, D, time_limit=time_limit, verbose=gurobi_logs,
+                        use_phase1=use_phase1, pareto_method="two_step",
+                    )
+            else:
                 p12_res = solve_benders_hub_arc_pareto_phase12(
                     n, p, W, D, time_limit=time_limit, verbose=gurobi_logs,
                     use_phase1=use_phase1, pareto_method="two_step",
                 )
-        else:
-            p12_res = solve_benders_hub_arc_pareto_phase12(
-                n, p, W, D, time_limit=time_limit, verbose=gurobi_logs,
-                use_phase1=use_phase1, pareto_method="two_step",
-            )
+        except Exception as _p12_err:
+            p12_res = _fail_res("ParetoP12", _p12_err)
         if stage_progress:
             print(f"done {p12_res.get('time') or 0.0:.2f}s", flush=True)
 
