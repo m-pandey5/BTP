@@ -64,18 +64,11 @@ GRB_TIME_LIMIT_STATUS = {9, "TIME_LIMIT"}
 
 
 def get_large_instance_specs() -> List[Dict]:
-    """Instance configs: n=60..200 (two p values per n)."""
+    """Instance configs: n=30..60 (step 5) with p=6,9,12."""
     configs = []
-    for n, p1, p2 in [
-        (60,  12, 15),
-        (75,  15, 19),
-        (100, 20, 25),
-        (125, 25, 31),
-        (150, 30, 38),
-        (200, 40, 50),
-    ]:
-        configs.append({"n": n, "p": p1, "fixed": False})
-        configs.append({"n": n, "p": p2, "fixed": False})
+    for n in [30, 35, 40, 45, 50, 55, 60]:
+        for p in [6, 9, 12]:
+            configs.append({"n": n, "p": p, "fixed": False})
     return configs
 
 
@@ -96,6 +89,8 @@ def save_results_csv(results: List[Dict], path: str) -> None:
         "mdp_gap",
         "p12_time", "p12_obj", "p12_status",
         "p12_gap",
+        "mle_time", "mle_obj", "mle_status",
+        "mle_gap",
         "row_classification",
         "match",
     ]
@@ -139,13 +134,11 @@ def _seeds_for_n(n: int, default_seeds: List[int], large_seeds: List[int], all_s
 def _effective_time_limit_for_n(n: int, forced_limit: Optional[float]) -> float:
     if forced_limit is not None:
         return forced_limit
-    if n >= 60:
-        return 36000.0  # 10 hours per solver
-    return 3600.0  # fallback for any smaller n if specs are extended later
+    return 43200.0  # 12 hours per solver
 
 
 def _fastest_winner(
-    r: Dict, include_extras: bool, skip_f3: bool
+    r: Dict, include_extras: bool, skip_f3: bool, include_ml: bool = False
 ) -> Optional[str]:
     if "error" in r:
         return None
@@ -164,6 +157,13 @@ def _fastest_winner(
             ("MD", "md_time"),
             ("MDP", "mdp_time"),
             ("P12", "p12_time"),
+        ]:
+            t = r.get(key)
+            if t is not None and t >= 0:
+                times.append((name, t))
+    if include_ml:
+        for name, key in [
+            ("MLExact", "mle_time"),
         ]:
             t = r.get(key)
             if t is not None and t >= 0:
@@ -234,7 +234,9 @@ def _fmt_gap(v: Optional[float]) -> str:
     return f"{v:.6f}" if v is not None else "N/A"
 
 
-def _print_solver_warnings(r: Dict, include_extras: bool, skip_f3: bool) -> None:
+def _print_solver_warnings(
+    r: Dict, include_extras: bool, skip_f3: bool, include_ml: bool = False
+) -> None:
     solvers: List[Tuple[str, str, str, str]] = []
     if not skip_f3:
         solvers.append(("F3", "f3_status", "f3_obj", "f3_gap"))
@@ -252,6 +254,8 @@ def _print_solver_warnings(r: Dict, include_extras: bool, skip_f3: bool) -> None
                 ("P12", "p12_status", "p12_obj", "p12_gap"),
             ]
         )
+    if include_ml:
+        solvers.append(("MLExact", "mle_status", "mle_obj", "mle_gap"))
     for name, status_key, obj_key, gap_key in solvers:
         status = str(r.get(status_key, "UNKNOWN"))
         if status in ("OPTIMAL", "SKIPPED"):
@@ -262,7 +266,9 @@ def _print_solver_warnings(r: Dict, include_extras: bool, skip_f3: bool) -> None
         )
 
 
-def _print_gap_summary(r: Dict, include_extras: bool, skip_f3: bool) -> None:
+def _print_gap_summary(
+    r: Dict, include_extras: bool, skip_f3: bool, include_ml: bool = False
+) -> None:
     parts: List[str] = []
     if not skip_f3:
         parts.append(f"F3={_fmt_gap(r.get('f3_gap'))}")
@@ -272,10 +278,15 @@ def _print_gap_summary(r: Dict, include_extras: bool, skip_f3: bool) -> None:
         parts.append(f"MD={_fmt_gap(r.get('md_gap'))}")
         parts.append(f"MDP={_fmt_gap(r.get('mdp_gap'))}")
         parts.append(f"P12={_fmt_gap(r.get('p12_gap'))}")
+    if include_ml:
+        parts.append(f"MLExact={_fmt_gap(r.get('mle_gap'))}")
     print("      GAP SUMMARY: " + "  ".join(parts))
 
 
-def _classify_row(r: Dict, include_extras: bool, skip_f3: bool, gap_threshold: float) -> str:
+def _classify_row(
+    r: Dict, include_extras: bool, skip_f3: bool, gap_threshold: float,
+    include_ml: bool = False,
+) -> str:
     if "error" in r:
         return "UNRESOLVED"
 
@@ -285,6 +296,8 @@ def _classify_row(r: Dict, include_extras: bool, skip_f3: bool, gap_threshold: f
     solver_keys.extend([("norm_status", "norm_gap"), ("new_status", "new_gap")])
     if include_extras:
         solver_keys.extend([("md_status", "md_gap"), ("mdp_status", "mdp_gap"), ("p12_status", "p12_gap")])
+    if include_ml:
+        solver_keys.append(("mle_status", "mle_gap"))
 
     statuses = [_status_str(r.get(sk)) for sk, _ in solver_keys]
     gaps = [r.get(gk) for _, gk in solver_keys]
@@ -302,10 +315,12 @@ def _classify_row(r: Dict, include_extras: bool, skip_f3: bool, gap_threshold: f
 
 
 def main():
-    # F3 is skipped by default (OOM on large instances). Set LARGE_BENCH_RUN_F3=1 to enable.
-    skip_f3 = not _env_truthy("LARGE_BENCH_RUN_F3")
+    # F3 runs by default. Set LARGE_BENCH_SKIP_F3=1 to skip it.
+    skip_f3 = _env_truthy("LARGE_BENCH_SKIP_F3")
     # Default: run MD + MD Pareto + P12 after New. Set LARGE_BENCH_NO_EXTRA=1 to skip.
     include_extras = not _env_truthy("LARGE_BENCH_NO_EXTRA")
+    # Default: run ML-exact + ML-default. Set LARGE_BENCH_NO_ML=1 to skip.
+    include_ml = not _env_truthy("LARGE_BENCH_NO_ML")
     # Default ON: show real Gurobi logs unless explicitly disabled.
     gurobi_logs = not _env_truthy("LARGE_BENCH_NO_GUROBI_LOGS")
 
@@ -351,11 +366,11 @@ def main():
 
         print(
             f"\nInstance specs: {len(instance_specs)} configurations "
-            f"(n=60..200, two p per n)"
+            f"(n=30..60 step 5, p=6/9/12)"
         )
         print(f"Default seeds: {seeds} | Large-n seeds: {large_seeds}")
         print(f"Total planned runs: {total_runs}")
-        print("TimeLimit policy (per solver): n>=60 -> 36000s (10 hours)")
+        print("TimeLimit policy (per solver): 43200s (12 hours) for all instances")
         if forced_limit is not None:
             print(f"Forced TimeLimit override active: {forced_limit}s (LARGE_BENCH_FORCE_TIME_LIMIT)")
         print(f"Row classification gap threshold: {gap_threshold}")
@@ -419,6 +434,7 @@ def main():
                         heartbeat_sec=(0.0 if gurobi_logs else 20.0),
                         skip_f3=skip_f3,
                         include_md_and_phase12=include_extras,
+                        include_ml=include_ml,
                         gurobi_logs=gurobi_logs,
                     )
                     r["seed"] = seed
@@ -431,45 +447,44 @@ def main():
                         r["md_status"] = _status_str(r.get("md_status"))
                         r["mdp_status"] = _status_str(r.get("mdp_status"))
                         r["p12_status"] = _status_str(r.get("p12_status"))
+                    if include_ml:
+                        r["mle_status"] = _status_str(r.get("mle_status"))
                     r["row_classification"] = _classify_row(
-                        r, include_extras=include_extras, skip_f3=skip_f3, gap_threshold=gap_threshold
+                        r, include_extras=include_extras, skip_f3=skip_f3,
+                        gap_threshold=gap_threshold, include_ml=include_ml,
                     )
                     r["_case_label"] = case_label
                     results.append(r)
                     print(f"      Class: {r['row_classification']} (limit={effective_time_limit:.0f}s)")
+                    time_line = (
+                        f"F3={_fmt_time(r.get('f3_time'))}s, NormB={_fmt_time(r.get('norm_time'))}s, "
+                        f"NewB={_fmt_time(r.get('new_time'))}s"
+                    )
+                    obj_line = (
+                        f"F3={_fmt_obj(r.get('f3_obj'))}  "
+                        f"NormB={_fmt_obj(r.get('norm_obj'))}  "
+                        f"NewB={_fmt_obj(r.get('new_obj'))}"
+                    )
                     if include_extras:
-                        print(
-                            f"F3={_fmt_time(r.get('f3_time'))}s, NormB={_fmt_time(r.get('norm_time'))}s, "
-                            f"NewB={_fmt_time(r.get('new_time'))}s, MD={_fmt_time(r.get('md_time'))}s, "
-                            f"MDP={_fmt_time(r.get('mdp_time'))}s, P12={_fmt_time(r.get('p12_time'))}s "
-                            f"(fastest: {_fastest_winner(r, include_extras, skip_f3)})"
+                        time_line += (
+                            f", MD={_fmt_time(r.get('md_time'))}s, "
+                            f"MDP={_fmt_time(r.get('mdp_time'))}s, "
+                            f"P12={_fmt_time(r.get('p12_time'))}s"
                         )
-                        print(
-                            "      Obj: "
-                            f"F3={_fmt_obj(r.get('f3_obj'))}  "
-                            f"NormB={_fmt_obj(r.get('norm_obj'))}  "
-                            f"NewB={_fmt_obj(r.get('new_obj'))}  "
-                            f"MD={_fmt_obj(r.get('md_obj'))}  "
+                        obj_line += (
+                            f"  MD={_fmt_obj(r.get('md_obj'))}  "
                             f"MDP={_fmt_obj(r.get('mdp_obj'))}  "
-                            f"P12={_fmt_obj(r.get('p12_obj'))}  |  "
-                            f"{'Match' if r.get('match') else 'MISMATCH'}"
+                            f"P12={_fmt_obj(r.get('p12_obj'))}"
                         )
-                        _print_gap_summary(r, include_extras=include_extras, skip_f3=skip_f3)
-                        _print_solver_warnings(r, include_extras=include_extras, skip_f3=skip_f3)
-                    else:
-                        print(
-                            f"F3={_fmt_time(r.get('f3_time'))}s, NormB={_fmt_time(r.get('norm_time'))}s, "
-                            f"NewB={_fmt_time(r.get('new_time'))}s "
-                            f"(fastest: {_fastest_winner(r, include_extras, skip_f3)})"
-                        )
-                        print(
-                            f"      Obj: F3={_fmt_obj(r.get('f3_obj'))}  "
-                            f"NormB={_fmt_obj(r.get('norm_obj'))}  "
-                            f"NewB={_fmt_obj(r.get('new_obj'))}  |  "
-                            f"{'Match' if r.get('match') else 'MISMATCH'}"
-                        )
-                        _print_gap_summary(r, include_extras=include_extras, skip_f3=skip_f3)
-                        _print_solver_warnings(r, include_extras=include_extras, skip_f3=skip_f3)
+                    if include_ml:
+                        time_line += f", MLExact={_fmt_time(r.get('mle_time'))}s"
+                        obj_line += f"  MLExact={_fmt_obj(r.get('mle_obj'))}"
+                    time_line += f" (fastest: {_fastest_winner(r, include_extras, skip_f3, include_ml)})"
+                    obj_line += f"  |  {'Match' if r.get('match') else 'MISMATCH'}"
+                    print(time_line)
+                    print(f"      Obj: {obj_line}")
+                    _print_gap_summary(r, include_extras=include_extras, skip_f3=skip_f3, include_ml=include_ml)
+                    _print_solver_warnings(r, include_extras=include_extras, skip_f3=skip_f3, include_ml=include_ml)
                 except Exception as e:
                     print(f"ERROR: {e}")
                     err_row: Dict = {
@@ -521,8 +536,9 @@ def main():
         matches = sum(1 for r in results if r.get("match"))
         f3_wins = norm_wins = new_wins = 0
         md_wins = mdp_wins = p12_wins = 0
+        mle_wins = 0
         for r in results:
-            w = _fastest_winner(r, include_extras, skip_f3)
+            w = _fastest_winner(r, include_extras, skip_f3, include_ml)
             if w is None:
                 continue
             if w == "F3":
@@ -537,6 +553,8 @@ def main():
                 mdp_wins += 1
             elif w == "P12":
                 p12_wins += 1
+            elif w == "MLExact":
+                mle_wins += 1
 
         print(f"Total runs:             {total}")
         print(f"Objectives match:       {matches}/{total}")
@@ -548,6 +566,8 @@ def main():
             print(f"MD fastest:             {md_wins} runs")
             print(f"MD Pareto fastest:      {mdp_wins} runs")
             print(f"Pareto P12 fastest:     {p12_wins} runs")
+        if include_ml:
+            print(f"ML Exact fastest:       {mle_wins} runs")
 
         csv_path = os.path.join(_this_dir, "large_instance_results.csv")
         save_results_csv([{k: v for k, v in row.items() if not k.startswith("_")} for row in results], csv_path)

@@ -27,6 +27,7 @@ from new_model_hub_arc import solve_benders_hub_arc, preprocess
 from md_benders_hub_arc import solve_md_benders_hub_arc
 from md_benders_hub_arc_pareto import solve_md_benders_hub_arc_pareto
 from new_model_hub_arc_pareto_phase12 import solve_benders_hub_arc_pareto_phase12
+from ml_benders_hub_arc import solve_ml_benders_hub_arc
 
 
 @contextmanager
@@ -93,6 +94,7 @@ def run_instance(
     heartbeat_sec: float = 0.0,
     skip_f3: bool = False,
     include_md_and_phase12: bool = False,
+    include_ml: bool = False,
     gurobi_logs: bool = False,
 ) -> Dict[str, Any]:
     """
@@ -257,7 +259,30 @@ def run_instance(
         except Exception as _p12_err:
             p12_res = _fail_res("ParetoP12", _p12_err)
         if stage_progress:
-            print(f"done {p12_res.get('time') or 0.0:.2f}s", flush=True)
+            print(f"done {p12_res.get('time') or 0.0:.2f}s | ", end="", flush=True)
+
+    mle_res: Optional[Dict[str, Any]] = None
+    if include_ml:
+        if stage_progress:
+            print("(ML-exact …)", end=" ", flush=True)
+        try:
+            if hb:
+                with _long_task_heartbeat("ML Benders exact (ml_pair_fraction=1.0)", heartbeat_sec):
+                    mle_res = solve_ml_benders_hub_arc(
+                        n, p, W, D, time_limit=time_limit, verbose=gurobi_logs,
+                        use_phase1=use_phase1, arc_model=None, od_model=None,
+                        ml_pair_fraction=1.0, max_cuts_per_callback=None,
+                    )
+            else:
+                mle_res = solve_ml_benders_hub_arc(
+                    n, p, W, D, time_limit=time_limit, verbose=gurobi_logs,
+                    use_phase1=use_phase1, arc_model=None, od_model=None,
+                    ml_pair_fraction=1.0, max_cuts_per_callback=None,
+                )
+        except Exception as _mle_err:
+            mle_res = _fail_res("MLExact", _mle_err)
+        if stage_progress:
+            print(f"done {mle_res.get('time') or 0.0:.2f}s", flush=True)
 
     ref = f3_res["objective"]
     diff_norm = diff_new = None
@@ -274,6 +299,8 @@ def run_instance(
                 p12_res.get("objective"),
             ]
         )
+        if include_ml and mle_res is not None:
+            to_compare.append(mle_res.get("objective"))
         match_f3 = _all_objectives_close(to_compare)
     else:
         if skip_f3:
@@ -324,6 +351,11 @@ def run_instance(
         out["p12_obj"] = p12_res.get("objective")
         out["p12_status"] = p12_res.get("status")
         out["p12_gap"] = p12_res.get("mip_gap")
+    if include_ml and mle_res is not None:
+        out["mle_time"] = mle_res.get("time")
+        out["mle_obj"] = mle_res.get("objective")
+        out["mle_status"] = mle_res.get("status")
+        out["mle_gap"] = mle_res.get("mip_gap")
     return out
 
 
